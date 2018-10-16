@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h> // for NULL
 
 #ifndef MIN
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
@@ -12,6 +13,19 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// ////////////////////////////////////////////////////////////////////////////
+void *Malloc(const size_t sz) {
+  void *p = malloc(sz);
+  assert(p);
+  return p;
+}
+
+// ////////////////////////////////////////////////////////////////////////////
+void Free(void *pMem) {
+  assert(pMem);
+  free(pMem);
+}
 
 // ////////////////////////////////////////////////////////////////////////////
 static uint8_t calcCs(const uint8_t *data, const size_t length) {
@@ -27,18 +41,7 @@ static uint8_t calcCs(const uint8_t *data, const size_t length) {
 #define KPKT_SIZE(payloadSize) \
   sizeof(KLineMessageHdr) + (payloadSize) + sizeof(KLineMessageFtr)
 
-// ////////////////////////////////////////////////////////////////////////////
-void *Malloc(const size_t sz) {
-  void *p = malloc(sz);
-  assert(p);
-  return p;
-}
 
-// ////////////////////////////////////////////////////////////////////////////
-void Free(void *pMem) {
-  assert(pMem);
-  free(pMem);
-}
 
 // ////////////////////////////////////////////////////////////////////////////
 static size_t getPacketSize(const KLineMessage * const pM) {
@@ -359,7 +362,6 @@ KLineMessage *KLineAllocAuthenticatedMessage(
   assert(0 != pThis->authTx.noncePlusCnt[0]);
   return pM;
 }
-
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocDecryptMessage(
