@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "packed.h"
+#include "utils/packed.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,7 +18,7 @@ extern "C" {
 #ifdef WIN32
 #pragma warning(disable:4103)
 #endif
-#include "pack_push.h"
+#include "utils/pack_push.h"
 
 
   typedef struct PACKED KLinePairingTag {
@@ -70,7 +70,7 @@ extern "C" {
     KLineMessageFtr ftr;
   } KLineMessage;
 
-#include "pack_pop.h"
+#include "utils/pack_pop.h"
 #ifdef WIN32
 #pragma warning(default:4103)
 #endif
