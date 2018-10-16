@@ -125,13 +125,17 @@ extern "C" {
     const void *pPayloadSigned,
     const size_t payloadSizeSigned,
     const void *pPayloadEncrypted,
-    const size_t payloadSizeEncrypted,
-    KLineCcm *pRx
+    const size_t payloadSizeEncrypted
   );
 
   KLineMessage *KLineAllocDecryptMessage(
     KLineCcm *pThis,
-    const KLineMessage * const pEncryptedMsg);
+    const KLineMessage * const pEncryptedMsg,
+    uint8_t **ppSigned,
+    size_t *pSignedLen,
+    uint8_t **ppPlainText,
+    size_t *pPlainTextLen
+    );
 
   KLineMessage *KLineCreateChallenge(
     KLineCcm *pThis,

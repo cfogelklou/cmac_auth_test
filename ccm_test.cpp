@@ -27,23 +27,11 @@ int main(char **c, int v) {
   KLineCcmChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
   KLineFreeMessage(pM);
 
-  {
-    const char signedMsg[] = "";
-    //const char encryptedMsg[] = "encrypted";
 
-    pM = KLineAllocEncryptMessage(
-      &cem, 0x12, 0x05,
-      signedMsg, 0,
-      NULL, 0, &pak);
-
-    pM = KLineAllocDecryptMessage(
-      &pak,
-      pM);
-
-    KLineFreeMessage(pM);
-  }
-
-
+  uint8_t *pSigned;
+  size_t signedLen;
+  uint8_t *pPlainText;
+  size_t plainTextLen;
   {
     const char signedMsg[] = "signed";
     //const char encryptedMsg[] = "encrypted";
@@ -51,16 +39,26 @@ int main(char **c, int v) {
     pM = KLineAllocEncryptMessage(
       &cem, 0x12, 0x05,
       signedMsg, sizeof(signedMsg),
-      NULL, 0, &pak);
+      NULL, 0);
+
+    pPlainText = pSigned = NULL;
+    plainTextLen = signedLen = 0;
 
     pM = KLineAllocDecryptMessage(
       &pak,
-      pM);
+      pM,
+      &pSigned, &signedLen, &pPlainText, &plainTextLen
+      );
+
+    assert(signedLen == sizeof(signedMsg));
+    assert(0 == memcmp(pSigned, signedMsg, sizeof(signedMsg)));
+    assert(plainTextLen == 0);
+    assert(NULL == pPlainText);
 
     KLineFreeMessage(pM);
   }
 
-#if 0
+#if 1
   {
     //const char signedMsg[] = "signed";
     const char encryptedMsg[] = "encrypted";
@@ -70,9 +68,19 @@ int main(char **c, int v) {
       NULL, 0,
       encryptedMsg, sizeof(encryptedMsg));
 
+    pPlainText = pSigned = NULL;
+    plainTextLen = signedLen = 0;
     pM = KLineAllocDecryptMessage(
       &pak,
-      pM);
+      pM,
+      &pSigned, &signedLen, &pPlainText, &plainTextLen
+    );
+
+    assert(plainTextLen == sizeof(encryptedMsg));
+    assert(0 == memcmp(pPlainText, encryptedMsg, sizeof(encryptedMsg)));
+    assert(signedLen == 0);
+    assert(NULL == pSigned);
+
 
     KLineFreeMessage(pM);
   }
@@ -86,9 +94,18 @@ int main(char **c, int v) {
       signedMsg, sizeof(signedMsg),
       encryptedMsg, sizeof(encryptedMsg));
 
+    pPlainText = pSigned = NULL;
+    plainTextLen = signedLen = 0;
     pM = KLineAllocDecryptMessage(
       &pak,
-      pM);
+      pM,
+      &pSigned, &signedLen, &pPlainText, &plainTextLen
+    );
+
+    assert(signedLen == sizeof(signedMsg));
+    assert(0 == memcmp(pSigned, signedMsg, sizeof(signedMsg)));
+    assert(plainTextLen == sizeof(encryptedMsg));
+    assert(0 == memcmp(pPlainText, encryptedMsg, sizeof(encryptedMsg)));
 
     KLineFreeMessage(pM);
   }

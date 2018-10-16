@@ -3,7 +3,11 @@
 
 #include <assert.h>
 #include <stdlib.h>
+
+#ifdef DBG
 #include <stdio.h>
+#endif
+
 #include <string.h>
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
@@ -83,7 +87,7 @@ void KLineFreeMessage(KLineMessage *pM) {
   free(pM);
 }
 
-
+#ifdef DBG
 static void printHex(
   const char * const prefix,
   const uint8_t *pHex, const size_t len, 
@@ -101,6 +105,7 @@ static void printHex(
     printf(postfix);
   }
 }
+#endif
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocEncryptMessage(
@@ -110,8 +115,7 @@ KLineMessage *KLineAllocEncryptMessage(
   const void *pPayloadSigned,
   const size_t payloadSizeSigned,
   const void *pPlainText,
-  const size_t plainTextSize,
-  KLineCcm *pRx
+  const size_t plainTextSize
 ) {
   size_t sz = KPKT_SIZE(0);
   sz += 1; // txcnt;
@@ -140,6 +144,7 @@ KLineMessage *KLineAllocEncryptMessage(
 
     const size_t nonceLen = MIN(sizeof(pThis->ccmTx.noncePlusCnt), 13);
 
+#ifdef DBG
     printHex("enc:key ", pThis->ccmTx.key, sizeof(pThis->ccmTx.key), "\r\n");
     printf(  "enc:payloadSizeSigned:%x\r\n", payloadSizeSigned);
     printHex("enc:payloadSgn: ", pPayloadSigned, payloadSizeSigned, "\r\n");
@@ -149,6 +154,7 @@ KLineMessage *KLineAllocEncryptMessage(
     printf(  "enc:nonceLen:%d\r\n", nonceLen);
     printf(  "enc:addlDatasize:%d\r\n", addlDataSize);
     printHex("enc:pAddl:", pAddl, addlDataSize, "\r\n");
+#endif
 
     const int stat = mbedtls_ccm_encrypt_and_tag(
       &pThis->ccmTx.ccm, //ctx
@@ -161,27 +167,10 @@ KLineMessage *KLineAllocEncryptMessage(
       output, //output
       tag, 8);  //tag, tag_len
 
-    {
-      
-      //mbedtls_ccm_init(&pRx->ccmRx.ccm);
-      //mbedtls_ccm_setkey(&pRx->ccmRx.ccm, MBEDTLS_CIPHER_ID_AES, pThis->ccmTx.key, sizeof(pThis->ccmTx.key) * 8);
-
-      uint8_t *pTmp = malloc(plainTextSize);
-      int s = mbedtls_ccm_auth_decrypt(
-        &pRx->ccmRx.ccm, plainTextSize,
-        pThis->ccmTx.noncePlusCnt, nonceLen, 
-        pAddl, addlDataSize, 
-        pPlainText, pTmp, 
-        tag, 8);
-      free(pTmp);
-
-      assert(0 == s);
-
-      //mbedtls_ccm_free(&t);
-    }
-
+#ifdef DBG
     printHex("enc:encrypted:", output, plainTextSize, "\r\n");
     printHex("enc:tag:", tag, 8, "\r\n");
+#endif
 
     assert(0 == stat);
   
@@ -201,7 +190,12 @@ KLineMessage *KLineAllocEncryptMessage(
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocDecryptMessage(
   KLineCcm *pThis,
-  const KLineMessage * const pEncryptedMsg) {
+  const KLineMessage * const pEncryptedMsg,
+  uint8_t **ppSigned,
+  size_t *pSignedLen,
+  uint8_t **ppPlainText,
+  size_t *pPlainTextLen
+) {
 
   KLineMessage *pM = NULL;
   if (0 == KLineCheckCs(pEncryptedMsg)) {
@@ -222,7 +216,7 @@ KLineMessage *KLineAllocDecryptMessage(
         - 1 // function
         - 1 // txcnt
         - 1 // sdata_len
-        - payloadSizeSigned - 1
+        - 1 - payloadSizeSigned // scmd - payloadSize
         - 8; // signature
 
       if (cipherTextSize > 0) {
@@ -242,6 +236,7 @@ KLineMessage *KLineAllocDecryptMessage(
 
         const size_t nonceLen = MIN(sizeof(pThis->ccmRx.noncePlusCnt), 13);
 
+#ifdef DBG
         printf("\r\n");
         printHex("dec:key ", pThis->ccmRx.key, sizeof(pThis->ccmRx.key), "\r\n");
         printf("dec:payloadSizeSigned:%x\r\n", payloadSizeSigned);
@@ -253,6 +248,7 @@ KLineMessage *KLineAllocDecryptMessage(
         printf("dec:addlDatasize:%d\r\n", addlDataSize);
         printHex("dec:pAddl:", pAddl, addlDataSize, "\r\n");
         printHex("dec:tag:", tag, 8, "\r\n");
+#endif
 
         const int stat = mbedtls_ccm_auth_decrypt(
           &pThis->ccmRx.ccm, // ctx
@@ -266,10 +262,25 @@ KLineMessage *KLineAllocDecryptMessage(
           tag, 8 // tag, tag_len
         );
 
+#ifdef DBG
         printHex("enc:decrypted:", pPlainText, cipherTextSize, "\r\n");
-
+#endif
 
         assert(0 == stat);
+        if (0 == stat) {
+          if ((cipherTextSize > 0) && (ppPlainText)) {
+            *ppPlainText = pPlainText;
+          }
+          if (pPlainTextLen) {
+            *pPlainTextLen = cipherTextSize;
+          }
+          if ((payloadSizeSigned > 0) && (ppSigned)) {
+            *ppSigned = pAeadOut->sdata_and_edata;
+          }
+          if (pSignedLen) {
+            *pSignedLen = payloadSizeSigned;
+          }
+        }
 
         free(pAddl);
       }
