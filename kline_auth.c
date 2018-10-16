@@ -53,6 +53,15 @@ static KLineMessageFtr *getFtr(KLineMessage * const pM) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
+// Use RAND() by default to generate challenge.
+static void defaultrandombytesFn(void *p, uint8_t *pBuf, size_t bufLen) {
+  (void)p;
+  for (size_t i = 0; i < bufLen; i++) {
+    pBuf[i] = rand() & 0xff;
+  }
+}
+
+// ////////////////////////////////////////////////////////////////////////////
 int KLineCheckCs(KLineMessage * const pM) {
   const uint8_t cs0 = calcCs(&pM->hdr.addr, getPacketSize(pM) - 1);
   const KLineMessageFtr * pFtr = getFtr(pM);
@@ -195,7 +204,6 @@ KLineMessage *KLineAllocDecryptMessage(
       if (cipherTextSize > 0) {
         memset(pPlainText, 0, sizeof(cipherTextSize));
       }
-      const uint8_t * const tag = &pAeadIn->sdata_and_edata[payloadSizeSigned + cipherTextSize];
 
       {
         // Include TXCNT in the signed data.
@@ -207,6 +215,8 @@ KLineMessage *KLineAllocDecryptMessage(
         }
 
         const size_t nonceLen = MIN(sizeof(pThis->authRx.noncePlusCnt), 13);
+
+        const uint8_t * const tag = &pAeadIn->sdata_and_edata[payloadSizeSigned + cipherTextSize];
 
         const int stat = mbedtls_ccm_auth_decrypt(
           &pThis->authRx.ccm, // ctx
@@ -220,6 +230,7 @@ KLineMessage *KLineAllocDecryptMessage(
           tag, 8 // tag, tag_len
         );
 
+        Free(pAddl);
         assert(0 == stat);
 
         // Output variables
@@ -237,10 +248,7 @@ KLineMessage *KLineAllocDecryptMessage(
             *pSignedLen = payloadSizeSigned;
           }
         }
-
-        Free(pAddl);
       }
-
     }
   }
   Free(pEncryptedMsg);
@@ -298,15 +306,6 @@ void KLineAuthChallenge(
   if (rxChallenge) {
     pThis->authRx.noncePlusCnt[0] = 0;
     memcpy(&pThis->authRx.noncePlusCnt[1], rxChallenge, 15);
-  }
-}
-
-// ////////////////////////////////////////////////////////////////////////////
-// Use RAND() to generate challenge.
-static void defaultrandombytesFn(void *p, uint8_t *pBuf, size_t bufLen) {
-  (void)p;
-  for (size_t i = 0; i < bufLen; i++) {
-    pBuf[i] = rand() & 0xff;
   }
 }
 
