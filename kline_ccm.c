@@ -3,17 +3,14 @@
 
 #include <assert.h>
 #include <stdlib.h>
-
-#ifdef DBG
-#include <stdio.h>
-#endif
-
 #include <string.h>
 
+#ifndef MIN
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
+#endif
 
 #ifdef __cplusplus
-//extern "C" {
+extern "C" {
 #endif
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -87,26 +84,6 @@ void KLineFreeMessage(KLineMessage *pM) {
   free(pM);
 }
 
-#ifdef DBG
-static void printHex(
-  const char * const prefix,
-  const uint8_t *pHex, const size_t len, 
-  const char * const postfix) {
-
-  if (prefix) {
-    printf(prefix);
-  }
-
-  for (size_t i = 0; i < len; i++) {
-    printf("%02x", pHex[i]);
-  }
-
-  if (postfix) {
-    printf(postfix);
-  }
-}
-#endif
-
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocEncryptMessage(
   KLineCcm *pThis,
@@ -127,10 +104,10 @@ KLineMessage *KLineAllocEncryptMessage(
   memset(pM, 0, sz);
   pM->hdr.addr = addr;
   pM->hdr.function = func;
-  pM->hdr.length = sz - 1 - 1; // Size - sizeof(addr) - sizeof(length)
+  pM->hdr.length = (uint8_t)(sz - 1 - 1); // Size - sizeof(addr) - sizeof(length)
   KLineAEADMessage *pAead = (KLineAEADMessage *)pM->u.payload;
   pAead->hdr.txcnt = pThis->ccmTx.noncePlusCnt[0];
-  pAead->hdr.sdata_len = payloadSizeSigned;
+  pAead->hdr.sdata_len = (uint8_t)payloadSizeSigned;
   memcpy(&pAead->sdata_and_edata[0], pPayloadSigned, payloadSizeSigned);
   uint8_t * const output = &pAead->sdata_and_edata[payloadSizeSigned];
   uint8_t * const tag = &pAead->sdata_and_edata[payloadSizeSigned + plainTextSize];
@@ -144,18 +121,6 @@ KLineMessage *KLineAllocEncryptMessage(
 
     const size_t nonceLen = MIN(sizeof(pThis->ccmTx.noncePlusCnt), 13);
 
-#ifdef DBG
-    printHex("enc:key ", pThis->ccmTx.key, sizeof(pThis->ccmTx.key), "\r\n");
-    printf(  "enc:payloadSizeSigned:%x\r\n", payloadSizeSigned);
-    printHex("enc:payloadSgn: ", pPayloadSigned, payloadSizeSigned, "\r\n");
-    printf(  "enc:payloadSizeToEncrypt:%x\r\n", plainTextSize);
-    printHex("enc:payloadEnc: ", pPlainText, plainTextSize, "\r\n");
-    printHex("enc:noncePlusCnt:", pThis->ccmTx.noncePlusCnt, sizeof(pThis->ccmTx.noncePlusCnt), "\r\n");
-    printf(  "enc:nonceLen:%d\r\n", nonceLen);
-    printf(  "enc:addlDatasize:%d\r\n", addlDataSize);
-    printHex("enc:pAddl:", pAddl, addlDataSize, "\r\n");
-#endif
-
     const int stat = mbedtls_ccm_encrypt_and_tag(
       &pThis->ccmTx.ccm, //ctx
       plainTextSize, //length
@@ -166,11 +131,6 @@ KLineMessage *KLineAllocEncryptMessage(
       pPlainText, // input
       output, //output
       tag, 8);  //tag, tag_len
-
-#ifdef DBG
-    printHex("enc:encrypted:", output, plainTextSize, "\r\n");
-    printHex("enc:tag:", tag, 8, "\r\n");
-#endif
 
     assert(0 == stat);
   
@@ -191,9 +151,9 @@ KLineMessage *KLineAllocEncryptMessage(
 KLineMessage *KLineAllocDecryptMessage(
   KLineCcm *pThis,
   const KLineMessage * const pEncryptedMsg,
-  uint8_t **ppSigned,
+  const uint8_t **ppSigned,
   size_t *pSignedLen,
-  uint8_t **ppPlainText,
+  const uint8_t **ppPlainText,
   size_t *pPlainTextLen
 ) {
 
@@ -227,7 +187,6 @@ KLineMessage *KLineAllocDecryptMessage(
       {
         // Include TXCNT in the signed data.
         const size_t addlDataSize = 1 + payloadSizeSigned;
-        // Include TXCNT in the signed data.
         uint8_t *pAddl = malloc(addlDataSize);
         pAddl[0] = pAeadIn->hdr.txcnt;
         if (payloadSizeSigned > 0) {
@@ -235,20 +194,6 @@ KLineMessage *KLineAllocDecryptMessage(
         }
 
         const size_t nonceLen = MIN(sizeof(pThis->ccmRx.noncePlusCnt), 13);
-
-#ifdef DBG
-        printf("\r\n");
-        printHex("dec:key ", pThis->ccmRx.key, sizeof(pThis->ccmRx.key), "\r\n");
-        printf("dec:payloadSizeSigned:%x\r\n", payloadSizeSigned);
-        printHex("dec:payloadSgn: ", pAeadIn->sdata_and_edata, payloadSizeSigned, "\r\n");
-        printf("dec:payloadSizeEncrypted:%x\r\n", cipherTextSize);
-        printHex("dec:encrypted: ", pCipherText, cipherTextSize, "\r\n");
-        printHex("dec:noncePlusCnt:", pThis->ccmRx.noncePlusCnt, sizeof(pThis->ccmRx.noncePlusCnt), "\r\n");
-        printf("dec:nonceLen:%d\r\n", nonceLen);
-        printf("dec:addlDatasize:%d\r\n", addlDataSize);
-        printHex("dec:pAddl:", pAddl, addlDataSize, "\r\n");
-        printHex("dec:tag:", tag, 8, "\r\n");
-#endif
 
         const int stat = mbedtls_ccm_auth_decrypt(
           &pThis->ccmRx.ccm, // ctx
@@ -261,10 +206,6 @@ KLineMessage *KLineAllocDecryptMessage(
           pPlainText, // output
           tag, 8 // tag, tag_len
         );
-
-#ifdef DBG
-        printHex("enc:decrypted:", pPlainText, cipherTextSize, "\r\n");
-#endif
 
         assert(0 == stat);
         if (0 == stat) {
@@ -311,7 +252,6 @@ static void KLineCcmInit(
   stat = mbedtls_ccm_setkey(&pThis->ccmRx.ccm, MBEDTLS_CIPHER_ID_AES, pRxKey, 128);
   assert(stat == 0);
 
-
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -331,7 +271,6 @@ void KLineCcmInitCEM(
   memset(pThis, 0, sizeof(KLineCcm));
   KLineCcmInit(pThis, false, pPairing);
 }
-
 
 // ////////////////////////////////////////////////////////////////////////////
 void KLineCcmChallenge(
@@ -390,7 +329,6 @@ KLineMessage *KLineCreatePairing(
   return KLineAllocMessage(addr, func, sizeof(pairing), &pairing);
 }
 
-
 #ifdef __cplusplus
-//}
+}
 #endif

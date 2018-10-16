@@ -28,9 +28,9 @@ int main(char **c, int v) {
   KLineFreeMessage(pM);
 
 
-  uint8_t *pSigned;
+  const uint8_t *pSigned;
   size_t signedLen;
-  uint8_t *pPlainText;
+  const uint8_t *pPlainText;
   size_t plainTextLen;
   {
     const char signedMsg[] = "signed";

@@ -118,22 +118,25 @@ extern "C" {
 
   typedef void (*RandombytesFnPtr)(void *p, uint8_t *pBuf, size_t bufLen);
 
+  // Allocate an encrypted message.
   KLineMessage *KLineAllocEncryptMessage(
     KLineCcm *pThis,
     const uint8_t addr,
     const uint8_t func,
-    const void *pPayloadSigned,
-    const size_t payloadSizeSigned,
-    const void *pPayloadEncrypted,
-    const size_t payloadSizeEncrypted
+    const void *pPayloadSigned, // Signed data
+    const size_t payloadSizeSigned, // Size of signed data
+    const void *pPayloadEncrypted, // Encrypted data
+    const size_t payloadSizeEncrypted // Size of encrypted data.
   );
 
+  // Frees and decrypts pEncryptedMsg.
+  // Returns non-null message if decryption is successfull.
   KLineMessage *KLineAllocDecryptMessage(
     KLineCcm *pThis,
     const KLineMessage * const pEncryptedMsg,
-    uint8_t **ppSigned,
+    const uint8_t **ppSigned,
     size_t *pSignedLen,
-    uint8_t **ppPlainText,
+    const uint8_t **ppPlainText,
     size_t *pPlainTextLen
     );
 
