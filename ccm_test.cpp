@@ -16,29 +16,31 @@ static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
 
 int main(char **c, int v) {
 
-  KLineMessage *pM;
-  pM = KLineAllocMessage(0x12, 0x05, 0, nullptr);
-  KLineFreeMessage(pM);
-
-  KLineAuth pak;
-  KLineAuth cem;
-
-  pM = KLineCreatePairing(&cem, 0, 0, randombytes, NULL);
-  KLineAuthPairCEM(&cem, &pM->u.pairing);
-  KLineAuthPairPAKM(&pak, &pM->u.pairing);
-  KLineFreeMessage(pM);
-
-  pM = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
-  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
-  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
-  KLineFreeMessage(pM);
-
-
   const uint8_t *pSigned;
   size_t signedLen;
   const uint8_t *pPlainText;
   size_t plainTextLen;
 
+  KLineMessage *pM;
+  pM = KLineAllocMessage(0x12, 0x05, 0, nullptr);
+  KLineFreeMessage(pM);
+
+  KLineAuth pak;
+  KLineAuth cem;  
+
+  // CEM and PAK must pair with each other.
+  pM = KLineCreatePairing(&cem, 0, 0, randombytes, NULL);
+  KLineAuthPairCEM(&cem, &pM->u.pairing);
+  KLineAuthPairPAKM(&pak, &pM->u.pairing);
+  KLineFreeMessage(pM);
+
+  // Generate a challenge, apply the CEM and PAK.
+  pM = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
+  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
+  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
+  KLineFreeMessage(pM);
+
+  // First test, signed message only.
   {
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
     //const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
@@ -65,6 +67,7 @@ int main(char **c, int v) {
     KLineFreeMessage(pM);
   }
 
+  // Second test, encrypted message only.
   {
     //const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
     const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
@@ -90,6 +93,7 @@ int main(char **c, int v) {
     KLineFreeMessage(pM);
   }
 
+  // signed and encrypted messages... However, don't let txcnt roll over (which it will if i >= 255)
   for (int i = 0; i < 200; i++) {
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
     const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
@@ -115,11 +119,13 @@ int main(char **c, int v) {
     KLineFreeMessage(pM);
   }
 
+  // Generate new challenge to reset txcnt to 1.
   pM = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
   KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
   KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
   KLineFreeMessage(pM);
 
+  // signed and encrypted messages... However, don't let txcnt roll over (which it will if i >= 255)
   for (int i = 0; i < 200; i++) {
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
     const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
@@ -144,6 +150,9 @@ int main(char **c, int v) {
 
     KLineFreeMessage(pM);
   }
+
+  KLineAuthDestruct(&pak);
+  KLineAuthDestruct(&cem);
 
   return 0;
 }

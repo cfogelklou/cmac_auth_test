@@ -115,6 +115,10 @@ extern "C" {
     KLineAuth *pThis,
     const KLinePairing *pPairing);
 
+  void KLineAuthDestruct(
+    KLineAuth *pThis
+  );
+
   void KLineAuthChallenge(
     KLineAuth * const pThis,
     /// txChallenge: Sets the 120-bit challenge set by the remote device, 

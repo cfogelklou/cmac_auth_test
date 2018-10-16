@@ -121,7 +121,8 @@ static void KLineInitKey(
 
 #else
   uint8_t tmp[16];
-  const mbedtls_cipher_info_t *pCInfo = mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
+  const mbedtls_cipher_info_t * const pCInfo = 
+    mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
   assert(NULL != pCInfo);
   mbedtls_cipher_init(&pAuth->cmac);
 
@@ -137,6 +138,20 @@ static void KLineInitKey(
   stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   assert(0 == stat);
 
+#endif
+}
+
+// ////////////////////////////////////////////////////////////////////////////
+void KLineAuthDestruct(
+  KLineAuth *pThis
+)
+{
+#ifdef KLINE_CCM
+  mbedtls_ccm_free(&pThis->authRx.ccm);
+  mbedtls_ccm_free(&pThis->authTx.ccm);
+#else
+  mbedtls_cipher_free( &pThis->authRx.cmac );
+  mbedtls_cipher_free( &pThis->authTx.cmac );
 #endif
 }
 
@@ -369,7 +384,7 @@ KLineMessage *KLineAllocDecryptMessage(
       memcpy(pM, pEncryptedMsg, totalPacketSize);
       KLineAuthMessage * const pAeadOut = &pM->u.aead;
       const size_t payloadSizeSigned = pAeadIn->hdr.sdata_len;
-      const uint8_t * pPayloadSigned = pAeadOut->sdata_and_edata;
+      const uint8_t * pPayloadSigned = &pAeadOut->sdata_and_edata[0];
       const uint8_t * pCipherText = &pAeadIn->sdata_and_edata[payloadSizeSigned];
       uint8_t * const pPlainText = &pAeadOut->sdata_and_edata[payloadSizeSigned];
       const size_t cipherTextSize =
