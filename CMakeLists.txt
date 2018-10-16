@@ -4,6 +4,7 @@ project(kline_auth)
 set(CMAKE_CXX_STANDARD 11)
 
 add_definitions(-D_CONSOLE)
+add_definitions(-DKLINE_CMAC)
 
 if (WIN32)
     add_definitions(-DWIN32)

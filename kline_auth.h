@@ -1,7 +1,12 @@
 #ifndef KLINE_CCM_H__
 #define KLINE_CCM_H__
 
+#ifndef KLINE_CMAC
 #include "ccm.h"
+#define KLINE_CCM
+#else
+#include "cmac.h"
+#endif
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -47,7 +52,9 @@ extern "C" {
   typedef struct PACKED KLineAuthMessageTag {
     KLineAuthMessageHdr hdr;
     uint8_t sdata_and_edata[1];
+#ifdef KLINE_CCM
     uint8_t edata[1];
+#endif
     KLineAuthMessageFtr ftr;
   } KLineAuthMessage;
 
@@ -85,8 +92,11 @@ extern "C" {
   uint8_t KLineAddCs(KLineMessage * const pM);
 
   typedef struct KLineAuthTxRxTag {
+#ifdef KLINE_CCM
     mbedtls_ccm_context ccm;
-    //uint8_t key[16];
+#else
+    mbedtls_cipher_context_t cmac;
+#endif
     uint8_t noncePlusCnt[16];
   } KLineAuthTxRx;
 
@@ -118,8 +128,26 @@ extern "C" {
   // Optional callback to allow generation of random data.
   typedef void (*RandombytesFnPtr)(void *p, uint8_t *pBuf, size_t bufLen);
 
+  // Create a challenge message.
+  KLineMessage *KLineCreateChallenge(
+    KLineAuth *pThis,
+    const uint8_t addr,
+    const uint8_t func,
+    RandombytesFnPtr randFn,
+    void *randFnData
+  );
+
+  // Create a pairing message.
+  KLineMessage *KLineCreatePairing(
+    KLineAuth *pThis,
+    const uint8_t addr,
+    const uint8_t func,
+    RandombytesFnPtr randFn,
+    void *randFnData
+  );
+
   // Allocate an encrypted message.
-  KLineMessage *KLineAllocEncryptMessage(
+  KLineMessage *KLineAllocAuthenticatedMessage(
     KLineAuth *pThis,
     const uint8_t addr,
     const uint8_t func,
@@ -138,24 +166,6 @@ extern "C" {
     size_t *pSignedLen, ///< outputs the length of the data in ppSigned
     const uint8_t **ppPlainText, ///< outputs the decrypted part of the incoming data.
     size_t *pPlainTextLen ///< outputs the length of the plaintext
-    );
-
-  // Create a challenge message.
-  KLineMessage *KLineCreateChallenge(
-    KLineAuth *pThis,
-    const uint8_t addr,
-    const uint8_t func,
-    RandombytesFnPtr randFn,
-    void *randFnData
-  );
-
-  // Create a pairing message.
-  KLineMessage *KLineCreatePairing(
-    KLineAuth *pThis,
-    const uint8_t addr,
-    const uint8_t func,
-    RandombytesFnPtr randFn,
-    void *randFnData
   );
 
 #ifdef __cplusplus

@@ -6,6 +6,12 @@
 
 using namespace std;
 
+static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
+  (void)p;
+  for (size_t i = 0; i < bufLen; i++) {
+    pBuf[i] = rand() & 0xff;
+  }
+}
 
 
 int main(char **c, int v) {
@@ -17,12 +23,12 @@ int main(char **c, int v) {
   KLineAuth pak;
   KLineAuth cem;
 
-  pM = KLineCreatePairing(&cem, 0, 0, NULL, NULL);
+  pM = KLineCreatePairing(&cem, 0, 0, randombytes, NULL);
   KLineAuthPairCEM(&cem, &pM->u.pairing);
   KLineAuthPairPAKM(&pak, &pM->u.pairing);
   KLineFreeMessage(pM);
 
-  pM = KLineCreateChallenge(&cem, 0, 0, NULL, NULL);
+  pM = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
   KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
   KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
   KLineFreeMessage(pM);
@@ -32,11 +38,12 @@ int main(char **c, int v) {
   size_t signedLen;
   const uint8_t *pPlainText;
   size_t plainTextLen;
-  {
-    const char signedMsg[] = "signed";
-    //const char encryptedMsg[] = "encrypted";
 
-    pM = KLineAllocEncryptMessage(
+  {
+    const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
+    //const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
+
+    pM = KLineAllocAuthenticatedMessage(
       &cem, 0x12, 0x05,
       signedMsg, sizeof(signedMsg),
       NULL, 0);
@@ -58,12 +65,11 @@ int main(char **c, int v) {
     KLineFreeMessage(pM);
   }
 
-#if 1
   {
-    //const char signedMsg[] = "signed";
-    const char encryptedMsg[] = "encrypted";
+    //const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
+    const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
 
-    pM = KLineAllocEncryptMessage(
+    pM = KLineAllocAuthenticatedMessage(
       &cem, 0x12, 0x05,
       NULL, 0,
       encryptedMsg, sizeof(encryptedMsg));
@@ -81,15 +87,14 @@ int main(char **c, int v) {
     assert(signedLen == 0);
     assert(NULL == pSigned);
 
-
     KLineFreeMessage(pM);
   }
 
-  {
-    const char signedMsg[] = "signed";
-    const char encryptedMsg[] = "encrypted";
+  for (int i = 0; i < 200; i++) {
+    const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
+    const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
 
-    pM = KLineAllocEncryptMessage(
+    pM = KLineAllocAuthenticatedMessage(
       &cem, 0x12, 0x05,
       signedMsg, sizeof(signedMsg),
       encryptedMsg, sizeof(encryptedMsg));
@@ -109,8 +114,36 @@ int main(char **c, int v) {
 
     KLineFreeMessage(pM);
   }
-#endif
 
+  pM = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
+  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
+  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
+  KLineFreeMessage(pM);
+
+  for (int i = 0; i < 200; i++) {
+    const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
+    const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
+
+    pM = KLineAllocAuthenticatedMessage(
+      &cem, 0x12, 0x05,
+      signedMsg, sizeof(signedMsg),
+      encryptedMsg, sizeof(encryptedMsg));
+
+    pPlainText = pSigned = NULL;
+    plainTextLen = signedLen = 0;
+    pM = KLineAllocDecryptMessage(
+      &pak,
+      pM,
+      &pSigned, &signedLen, &pPlainText, &plainTextLen
+    );
+
+    assert(signedLen == sizeof(signedMsg));
+    assert(0 == memcmp(pSigned, signedMsg, sizeof(signedMsg)));
+    assert(plainTextLen == sizeof(encryptedMsg));
+    assert(0 == memcmp(pPlainText, encryptedMsg, sizeof(encryptedMsg)));
+
+    KLineFreeMessage(pM);
+  }
 
   return 0;
 }
