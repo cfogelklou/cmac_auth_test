@@ -16,6 +16,8 @@ endif (APPLE)
 file(GLOB LOCAL_SRC
   *.c
   *.cpp
+  *.h
+  *.hpp
 )
 
 
