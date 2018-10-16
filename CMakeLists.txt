@@ -32,6 +32,7 @@ file(GLOB MBEDTLS_SRC
   mbedtls/library/aes.c
   # mbedtls/library/platform.c
   mbedtls/library/platform_util.c
+  mbedtls/library/cmac.c
 )
 
 set(APP_SOURCE_FILES
