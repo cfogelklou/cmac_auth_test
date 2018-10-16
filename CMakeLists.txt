@@ -18,8 +18,18 @@ file(GLOB LOCAL_SRC
   *.cpp
 )
 
+
+# file(GLOB MBEDTLS_SRC
+#   mbedtls/library/*.c
+# )
+
 file(GLOB MBEDTLS_SRC
   mbedtls/library/ccm.c
+  mbedtls/library/cipher.c
+  mbedtls/library/cipher_wrap.c
+  mbedtls/library/aes.c
+  # mbedtls/library/platform.c
+  mbedtls/library/platform_util.c
 )
 
 set(APP_SOURCE_FILES
@@ -29,8 +39,9 @@ set(APP_SOURCE_FILES
 
 include_directories(
   ./
-  ${EXTERN_LIBS}/mbedtls/include
-  ${EXTERN_LIBS}/mbedtls/include/mbedtls
+  config
+  mbedtls/include
+  mbedtls/include/mbedtls
 )
 
 add_executable(kline_ccm ${APP_SOURCE_FILES})
