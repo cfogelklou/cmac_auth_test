@@ -1,5 +1,5 @@
 
-#include "kline_ccm.h"
+#include "kline_auth.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -25,6 +25,19 @@ static uint8_t calcCs(const uint8_t *data, const size_t length) {
 // ////////////////////////////////////////////////////////////////////////////
 #define KPKT_SIZE(payloadSize) \
   sizeof(KLineMessageHdr) + (payloadSize) + sizeof(KLineMessageFtr)
+
+// ////////////////////////////////////////////////////////////////////////////
+void *Malloc(const size_t sz) {
+  void *p = malloc(sz);
+  assert(p);
+  return p;
+}
+
+// ////////////////////////////////////////////////////////////////////////////
+void Free(void *pMem) {
+  assert(pMem);
+  free(pMem);
+}
 
 // ////////////////////////////////////////////////////////////////////////////
 static size_t getPacketSize(const KLineMessage * const pM) {
@@ -61,7 +74,7 @@ KLineMessage *KLineAllocMessage(
   const size_t payloadSize, 
   void *pPayloadCanBeNull) {
   const size_t sz = KPKT_SIZE(payloadSize);
-  KLineMessage *pM = malloc(sz);
+  KLineMessage *pM = Malloc(sz);
   pM->hdr.addr = addr;
   pM->hdr.function = func;
   pM->hdr.length = 1 + (uint8_t)payloadSize + 1;
@@ -81,12 +94,12 @@ KLineMessage *KLineAllocMessage(
 
 // ////////////////////////////////////////////////////////////////////////////
 void KLineFreeMessage(KLineMessage *pM) {
-  free(pM);
+  Free(pM);
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocEncryptMessage(
-  KLineCcm *pThis,
+  KLineAuth *pThis,
   const uint8_t addr,
   const uint8_t func,
   const void *pPayloadSigned,
@@ -100,13 +113,13 @@ KLineMessage *KLineAllocEncryptMessage(
   sz += payloadSizeSigned;
   sz += plainTextSize;
   sz += 8; // signature
-  KLineMessage *pM = malloc(sz);
+  KLineMessage *pM = Malloc(sz);
   memset(pM, 0, sz);
   pM->hdr.addr = addr;
   pM->hdr.function = func;
   pM->hdr.length = (uint8_t)(sz - 1 - 1); // Size - sizeof(addr) - sizeof(length)
-  KLineAEADMessage *pAead = (KLineAEADMessage *)pM->u.payload;
-  pAead->hdr.txcnt = pThis->ccmTx.noncePlusCnt[0];
+  KLineAuthMessage *pAead = (KLineAuthMessage *)pM->u.payload;
+  pAead->hdr.txcnt = pThis->authTx.noncePlusCnt[0];
   pAead->hdr.sdata_len = (uint8_t)payloadSizeSigned;
   memcpy(&pAead->sdata_and_edata[0], pPayloadSigned, payloadSizeSigned);
   uint8_t * const output = &pAead->sdata_and_edata[payloadSizeSigned];
@@ -115,16 +128,16 @@ KLineMessage *KLineAllocEncryptMessage(
   {
     // Include TXCNT in the signed data.
     const size_t addlDataSize = 1 + payloadSizeSigned;
-    uint8_t *pAddl = malloc(addlDataSize);
+    uint8_t *pAddl = Malloc(addlDataSize);
     pAddl[0] = pAead->hdr.txcnt;
     memcpy(&pAddl[1], pPayloadSigned, payloadSizeSigned);
 
-    const size_t nonceLen = MIN(sizeof(pThis->ccmTx.noncePlusCnt), 13);
+    const size_t nonceLen = MIN(sizeof(pThis->authTx.noncePlusCnt), 13);
 
     const int stat = mbedtls_ccm_encrypt_and_tag(
-      &pThis->ccmTx.ccm, //ctx
+      &pThis->authTx.ccm, //ctx
       plainTextSize, //length
-      pThis->ccmTx.noncePlusCnt, //iv
+      pThis->authTx.noncePlusCnt, //iv
       nonceLen, //iv_len
       pAddl, // add
       addlDataSize, // add_len
@@ -134,22 +147,22 @@ KLineMessage *KLineAllocEncryptMessage(
 
     assert(0 == stat);
   
-    free(pAddl);
+    Free(pAddl);
   }
 
   KLineAddCs(pM);
 
   assert(0 == KLineCheckCs(pM));
 
-  ++pThis->ccmTx.noncePlusCnt[0];
-  assert(0 != pThis->ccmTx.noncePlusCnt[0]);
+  ++pThis->authTx.noncePlusCnt[0];
+  assert(0 != pThis->authTx.noncePlusCnt[0]);
   return pM;
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocDecryptMessage(
-  KLineCcm *pThis,
+  KLineAuth *pThis,
   const KLineMessage * const pEncryptedMsg,
   const uint8_t **ppSigned,
   size_t *pSignedLen,
@@ -160,16 +173,16 @@ KLineMessage *KLineAllocDecryptMessage(
   KLineMessage *pM = NULL;
   if (0 == KLineCheckCs(pEncryptedMsg)) {
     const size_t totalPacketSize = getPacketSize(pEncryptedMsg);
-    const KLineAEADMessage * const pAeadIn = &pEncryptedMsg->u.aead;
-    const int diff = pAeadIn->hdr.txcnt - pThis->ccmRx.noncePlusCnt[0];
+    const KLineAuthMessage * const pAeadIn = &pEncryptedMsg->u.aead;
+    const int diff = pAeadIn->hdr.txcnt - pThis->authRx.noncePlusCnt[0];
     if (diff > 0) {
-      pThis->ccmRx.noncePlusCnt[0] = pAeadIn->hdr.txcnt;
-      pM = malloc(totalPacketSize);
+      pThis->authRx.noncePlusCnt[0] = pAeadIn->hdr.txcnt;
+      pM = Malloc(totalPacketSize);
       memcpy(pM, pEncryptedMsg, totalPacketSize);
-      KLineAEADMessage * const pAeadOut = &pM->u.aead;
+      KLineAuthMessage * const pAeadOut = &pM->u.aead;
       const size_t payloadSizeSigned = pAeadIn->hdr.sdata_len;
       const uint8_t * pCipherText = &pAeadIn->sdata_and_edata[payloadSizeSigned];
-      const uint8_t * pPlainText = &pAeadOut->sdata_and_edata[payloadSizeSigned];
+      uint8_t * pPlainText = &pAeadOut->sdata_and_edata[payloadSizeSigned];
       const size_t cipherTextSize =
         totalPacketSize
         - 2 // addr + length
@@ -187,18 +200,18 @@ KLineMessage *KLineAllocDecryptMessage(
       {
         // Include TXCNT in the signed data.
         const size_t addlDataSize = 1 + payloadSizeSigned;
-        uint8_t *pAddl = malloc(addlDataSize);
+        uint8_t *pAddl = Malloc(addlDataSize);
         pAddl[0] = pAeadIn->hdr.txcnt;
         if (payloadSizeSigned > 0) {
           memcpy(&pAddl[1], pAeadIn->sdata_and_edata, payloadSizeSigned);
         }
 
-        const size_t nonceLen = MIN(sizeof(pThis->ccmRx.noncePlusCnt), 13);
+        const size_t nonceLen = MIN(sizeof(pThis->authRx.noncePlusCnt), 13);
 
         const int stat = mbedtls_ccm_auth_decrypt(
-          &pThis->ccmRx.ccm, // ctx
+          &pThis->authRx.ccm, // ctx
           cipherTextSize, // length
-          pThis->ccmRx.noncePlusCnt, // iv
+          pThis->authRx.noncePlusCnt, // iv
           nonceLen, // iv_len
           pAddl, // add
           addlDataSize, // add_len
@@ -208,6 +221,8 @@ KLineMessage *KLineAllocDecryptMessage(
         );
 
         assert(0 == stat);
+
+        // Output variables
         if (0 == stat) {
           if ((cipherTextSize > 0) && (ppPlainText)) {
             *ppPlainText = pPlainText;
@@ -223,69 +238,66 @@ KLineMessage *KLineAllocDecryptMessage(
           }
         }
 
-        free(pAddl);
+        Free(pAddl);
       }
 
     }
   }
-  free(pEncryptedMsg);
+  Free(pEncryptedMsg);
   return pM;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-static void KLineCcmInit(
-  KLineCcm *pThis,
+static void KLineAuthPair(
+  KLineAuth *pThis,
   bool isPakm,
   const KLinePairing * const pPairing)
 {
 
-  mbedtls_ccm_init(&pThis->ccmTx.ccm);
-  mbedtls_ccm_init(&pThis->ccmRx.ccm);
-
+  mbedtls_ccm_init(&pThis->authTx.ccm);
   const uint8_t * const pTxKey = (isPakm) ? pPairing->pakToCem : pPairing->cemToPak;
-  const uint8_t * const pRxKey = (!isPakm) ? pPairing->pakToCem : pPairing->cemToPak;
-  memcpy(pThis->ccmTx.key, pTxKey, 16);
-  int stat = mbedtls_ccm_setkey(&pThis->ccmTx.ccm, MBEDTLS_CIPHER_ID_AES, pTxKey, 128);
+  int stat = mbedtls_ccm_setkey(&pThis->authTx.ccm, MBEDTLS_CIPHER_ID_AES, pTxKey, 128);
   assert(stat == 0);
 
-  memcpy(pThis->ccmRx.key, pRxKey, 16);
-  stat = mbedtls_ccm_setkey(&pThis->ccmRx.ccm, MBEDTLS_CIPHER_ID_AES, pRxKey, 128);
+  mbedtls_ccm_init(&pThis->authRx.ccm);
+  const uint8_t * const pRxKey = (!isPakm) ? pPairing->pakToCem : pPairing->cemToPak;
+  stat = mbedtls_ccm_setkey(&pThis->authRx.ccm, MBEDTLS_CIPHER_ID_AES, pRxKey, 128);
   assert(stat == 0);
 
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 // Initialize the PAKM side
-void KLineCcmInitPAKM(
-  KLineCcm *pThis,
+void KLineAuthPairPAKM(
+  KLineAuth *pThis,
   const KLinePairing *pPairing) {
-  memset(pThis, 0, sizeof(KLineCcm));
-  KLineCcmInit(pThis, true, pPairing);
+  memset(pThis, 0, sizeof(KLineAuth));
+  KLineAuthPair(pThis, true, pPairing);
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 // Initialize the CEM side
-void KLineCcmInitCEM(
-  KLineCcm *pThis,
+void KLineAuthPairCEM(
+  KLineAuth *pThis,
   const KLinePairing *pPairing) {
-  memset(pThis, 0, sizeof(KLineCcm));
-  KLineCcmInit(pThis, false, pPairing);
+  memset(pThis, 0, sizeof(KLineAuth));
+  KLineAuthPair(pThis, false, pPairing);
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-void KLineCcmChallenge(
-  KLineCcm * const pThis,
+void KLineAuthChallenge(
+  KLineAuth * const pThis,
   const KLineChallenge txChallenge[15],
   const KLineChallenge rxChallenge[15]
 ) {
   if (txChallenge) {
-    pThis->ccmTx.noncePlusCnt[0] = 1;
-    memcpy(&pThis->ccmTx.noncePlusCnt[1], txChallenge, 15);
+    pThis->authTx.noncePlusCnt[0] = 1;
+    memcpy(&pThis->authTx.noncePlusCnt[1], txChallenge, 15);
   }
 
   if (rxChallenge) {
-    pThis->ccmRx.noncePlusCnt[0] = 0;
-    memcpy(&pThis->ccmRx.noncePlusCnt[1], rxChallenge, 15);
+    pThis->authRx.noncePlusCnt[0] = 0;
+    memcpy(&pThis->authRx.noncePlusCnt[1], rxChallenge, 15);
   }
 }
 
@@ -293,14 +305,14 @@ void KLineCcmChallenge(
 // Use RAND() to generate challenge.
 static void defaultrandombytesFn(void *p, uint8_t *pBuf, size_t bufLen) {
   (void)p;
-  for (int i = 0; i < bufLen; i++) {
+  for (size_t i = 0; i < bufLen; i++) {
     pBuf[i] = rand() & 0xff;
   }
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreateChallenge(
-  KLineCcm *pThis,
+  KLineAuth *pThis,
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,
@@ -315,7 +327,7 @@ KLineMessage *KLineCreateChallenge(
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreatePairing(
-  KLineCcm *pThis,
+  KLineAuth *pThis,
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,

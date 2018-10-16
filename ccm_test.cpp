@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <cassert>
 
-#include "kline_ccm.h"
+#include "kline_auth.h"
 
 using namespace std;
 
@@ -14,17 +14,17 @@ int main(char **c, int v) {
   pM = KLineAllocMessage(0x12, 0x05, 0, nullptr);
   KLineFreeMessage(pM);
 
-  KLineCcm pak;
-  KLineCcm cem;
+  KLineAuth pak;
+  KLineAuth cem;
 
   pM = KLineCreatePairing(&cem, 0, 0, NULL, NULL);
-  KLineCcmInitCEM(&cem, &pM->u.pairing);
-  KLineCcmInitPAKM(&pak, &pM->u.pairing);
+  KLineAuthPairCEM(&cem, &pM->u.pairing);
+  KLineAuthPairPAKM(&pak, &pM->u.pairing);
   KLineFreeMessage(pM);
 
   pM = KLineCreateChallenge(&cem, 0, 0, NULL, NULL);
-  KLineCcmChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
-  KLineCcmChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
+  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
+  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
   KLineFreeMessage(pM);
 
 

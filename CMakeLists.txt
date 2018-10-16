@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(kline_ccm)
+project(kline_auth)
 
 set(CMAKE_CXX_STANDARD 11)
 

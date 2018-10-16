@@ -35,21 +35,21 @@ extern "C" {
     uint8_t cs;
   } KLineMessageFtr;
 
-  typedef struct PACKED KLineAEADMessageHdrTag {
+  typedef struct PACKED KLineAuthMessageHdrTag {
     uint8_t txcnt; // Least Significant Bits of 8-bit TXCNT part of message nonce.
     uint8_t sdata_len; // Specifies the length H, in bytes, of unencrypted, signed data preceding encrypted data. Also referred to as SPAYLOAD length.
-  } KLineAEADMessageHdr;
+  } KLineAuthMessageHdr;
 
-  typedef struct PACKED KLineAEADMessageFtrTag {
+  typedef struct PACKED KLineAuthMessageFtrTag {
     uint8_t sig[8];
-  } KLineAEADMessageFtr;
+  } KLineAuthMessageFtr;
 
-  typedef struct PACKED KLineAEADMessageTag {
-    KLineAEADMessageHdr hdr;
+  typedef struct PACKED KLineAuthMessageTag {
+    KLineAuthMessageHdr hdr;
     uint8_t sdata_and_edata[1];
     uint8_t edata[1];
-    KLineAEADMessageFtr ftr;
-  } KLineAEADMessage;
+    KLineAuthMessageFtr ftr;
+  } KLineAuthMessage;
 
   // Never use this object directly.
   typedef struct PACKED KLineMessageTag {
@@ -57,7 +57,7 @@ extern "C" {
     union {
       KLinePairing    pairing;
       KLineChallenge  challenge;
-      KLineAEADMessage aead;
+      KLineAuthMessage aead;
       uint8_t          payload[1];
     }u;
     KLineMessageFtr ftr;
@@ -84,43 +84,43 @@ extern "C" {
   // Adds the CS to a message.
   uint8_t KLineAddCs(KLineMessage * const pM);
 
-  typedef struct KLineCcmTxTag {
+  typedef struct KLineAuthTxRxTag {
     mbedtls_ccm_context ccm;
-    uint8_t key[16];
+    //uint8_t key[16];
     uint8_t noncePlusCnt[16];
-  } KLineCcmTx;
+  } KLineAuthTxRx;
 
-  typedef struct KLineCcmRxTag {
-    mbedtls_ccm_context ccm;
-    uint8_t key[16];
-    uint8_t noncePlusCnt[16];
-  } KLineCcmRx;
-
-  typedef struct KLineCcmTag {
-    KLineCcmTx ccmTx;
-    KLineCcmRx ccmRx;
-  }  KLineCcm;
+  typedef struct KLineAuthTag {
+    KLineAuthTxRx authTx;
+    KLineAuthTxRx authRx;
+  }  KLineAuth;
 
   // Initialize the PAKM side
-  void KLineCcmInitPAKM(
-    KLineCcm *pThis,
+  void KLineAuthPairPAKM(
+    KLineAuth *pThis,
     const KLinePairing *pPairing);
 
-  void KLineCcmInitCEM(
-    KLineCcm *pThis,
+  // Initialize the CEM side from a KLinePairing struct.
+  void KLineAuthPairCEM(
+    KLineAuth *pThis,
     const KLinePairing *pPairing);
 
-  void KLineCcmChallenge(
-    KLineCcm * const pThis,
+  void KLineAuthChallenge(
+    KLineAuth * const pThis,
+    /// txChallenge: Sets the 120-bit challenge set by the remote device, 
+    // allowing ourselves to authenticate
     const KLineChallenge txChallenge[15],
+
+    /// rxChallenge: Sets the challenge set locally, allowing the remote to authenticate.
     const KLineChallenge rxChallenge[15]
   );
 
+  // Optional callback to allow generation of random data.
   typedef void (*RandombytesFnPtr)(void *p, uint8_t *pBuf, size_t bufLen);
 
   // Allocate an encrypted message.
   KLineMessage *KLineAllocEncryptMessage(
-    KLineCcm *pThis,
+    KLineAuth *pThis,
     const uint8_t addr,
     const uint8_t func,
     const void *pPayloadSigned, // Signed data
@@ -132,24 +132,26 @@ extern "C" {
   // Frees and decrypts pEncryptedMsg.
   // Returns non-null message if decryption is successfull.
   KLineMessage *KLineAllocDecryptMessage(
-    KLineCcm *pThis,
+    KLineAuth *pThis,
     const KLineMessage * const pEncryptedMsg,
-    const uint8_t **ppSigned,
-    size_t *pSignedLen,
-    const uint8_t **ppPlainText,
-    size_t *pPlainTextLen
+    const uint8_t **ppSigned, ///< outputs the signed part of the incoming data
+    size_t *pSignedLen, ///< outputs the length of the data in ppSigned
+    const uint8_t **ppPlainText, ///< outputs the decrypted part of the incoming data.
+    size_t *pPlainTextLen ///< outputs the length of the plaintext
     );
 
+  // Create a challenge message.
   KLineMessage *KLineCreateChallenge(
-    KLineCcm *pThis,
+    KLineAuth *pThis,
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
     void *randFnData
   );
 
+  // Create a pairing message.
   KLineMessage *KLineCreatePairing(
-    KLineCcm *pThis,
+    KLineAuth *pThis,
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
