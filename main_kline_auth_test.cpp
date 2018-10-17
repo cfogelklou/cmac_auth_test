@@ -16,8 +16,7 @@ static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
 
 int main(char **c, int v) {
 
-  const uint8_t *pSigned;
-  size_t signedLen;
+  const KLineAuthMessage *pSigned;
   const uint8_t *pPlainText;
   size_t plainTextLen;
 
@@ -42,25 +41,26 @@ int main(char **c, int v) {
 
   // First test, signed message only.
   {
-    const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
+    const char signedMsg[] = "signed";
     //const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
 
     pM = KLineAllocAuthenticatedMessage(
-      &cem, 0x12, 0x05,
+      &cem, 0x12, 0x05, 0x02,
       signedMsg, sizeof(signedMsg),
       NULL, 0);
 
-    pPlainText = pSigned = NULL;
-    plainTextLen = signedLen = 0;
+    pPlainText = NULL;
+    pSigned = NULL;
+    plainTextLen = 0;
 
     pM = KLineAllocDecryptMessage(
       &pak,
       pM,
-      &pSigned, &signedLen, &pPlainText, &plainTextLen
+      &pSigned, &pPlainText, &plainTextLen
       );
 
-    assert(signedLen == sizeof(signedMsg));
-    assert(0 == memcmp(pSigned, signedMsg, sizeof(signedMsg)));
+    assert(pSigned->hdr.sdata_len == 1+sizeof(signedMsg));
+    assert(0 == memcmp(pSigned->sdata.u.sdata.spayload_and_edata, signedMsg, sizeof(signedMsg)));
     assert(plainTextLen == 0);
     assert(NULL == pPlainText);
 
@@ -73,21 +73,22 @@ int main(char **c, int v) {
     const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
 
     pM = KLineAllocAuthenticatedMessage(
-      &cem, 0x12, 0x05,
+      &cem, 0x12, 0x05, 0x02,
       NULL, 0,
       encryptedMsg, sizeof(encryptedMsg));
 
-    pPlainText = pSigned = NULL;
-    plainTextLen = signedLen = 0;
+    pPlainText = NULL;
+    pSigned = NULL;
+    plainTextLen = 0;
     pM = KLineAllocDecryptMessage(
       &pak,
       pM,
-      &pSigned, &signedLen, &pPlainText, &plainTextLen
+      &pSigned, &pPlainText, &plainTextLen
     );
 
     assert(plainTextLen == sizeof(encryptedMsg));
     assert(0 == memcmp(pPlainText, encryptedMsg, sizeof(encryptedMsg)));
-    assert(signedLen == 0);
+    //assert(signedLen == 0);
     assert(NULL == pSigned);
 
     KLineFreeMessage(pM);
@@ -99,20 +100,21 @@ int main(char **c, int v) {
     const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
 
     pM = KLineAllocAuthenticatedMessage(
-      &cem, 0x12, 0x05,
+      &cem, 0x12, 0x05, 0x02,
       signedMsg, sizeof(signedMsg),
       encryptedMsg, sizeof(encryptedMsg));
 
-    pPlainText = pSigned = NULL;
-    plainTextLen = signedLen = 0;
+    pPlainText = NULL;
+    pSigned = NULL;
+    plainTextLen = 0;
     pM = KLineAllocDecryptMessage(
       &pak,
       pM,
-      &pSigned, &signedLen, &pPlainText, &plainTextLen
+      &pSigned, &pPlainText, &plainTextLen
     );
 
-    assert(signedLen == sizeof(signedMsg));
-    assert(0 == memcmp(pSigned, signedMsg, sizeof(signedMsg)));
+    assert(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
+    assert(0 == memcmp(pSigned->sdata.u.sdata.spayload_and_edata, signedMsg, sizeof(signedMsg)));
     assert(plainTextLen == sizeof(encryptedMsg));
     assert(0 == memcmp(pPlainText, encryptedMsg, sizeof(encryptedMsg)));
 
@@ -131,20 +133,21 @@ int main(char **c, int v) {
     const char encryptedMsg[] = "encryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencryptedencrypted";
 
     pM = KLineAllocAuthenticatedMessage(
-      &cem, 0x12, 0x05,
+      &cem, 0x12, 0x05, 0x02,
       signedMsg, sizeof(signedMsg),
       encryptedMsg, sizeof(encryptedMsg));
 
-    pPlainText = pSigned = NULL;
-    plainTextLen = signedLen = 0;
+    pPlainText = NULL;
+    pSigned = NULL;
+    plainTextLen = 0;
     pM = KLineAllocDecryptMessage(
       &pak,
       pM,
-      &pSigned, &signedLen, &pPlainText, &plainTextLen
+      &pSigned, &pPlainText, &plainTextLen
     );
 
-    assert(signedLen == sizeof(signedMsg));
-    assert(0 == memcmp(pSigned, signedMsg, sizeof(signedMsg)));
+    assert(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
+    assert(0 == memcmp(pSigned->sdata.u.sdata.spayload_and_edata, signedMsg, sizeof(signedMsg)));
     assert(plainTextLen == sizeof(encryptedMsg));
     assert(0 == memcmp(pPlainText, encryptedMsg, sizeof(encryptedMsg)));
 

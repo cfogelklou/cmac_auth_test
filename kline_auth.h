@@ -62,10 +62,15 @@ extern "C" {
   // An authenticaed message consists of the header, then signed, then encrypted data, then footer.
   typedef struct PACKED KLineAuthMessageTag {
     KLineAuthMessageHdr hdr;
-    uint8_t sdata_and_edata[1];
-#ifdef KLINE_CCM
-    uint8_t edata[1];
-#endif
+    struct {
+      union {
+        struct {
+          uint8_t scmd;
+          uint8_t spayload_and_edata[1];
+        } sdata;
+        uint8_t rawBytes[1];
+      }u;
+    } sdata;    
     KLineAuthMessageFtr ftr;
   } KLineAuthMessage;
 
@@ -180,6 +185,7 @@ extern "C" {
     KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
+    const uint8_t scmd,
     const void *pPayloadSigned, // Signed data
     const size_t payloadSizeSigned, // Size of signed data
     const void *pPayloadEncrypted, // Encrypted data
@@ -191,10 +197,9 @@ extern "C" {
   KLineMessage *KLineAllocDecryptMessage(
     KLineAuth * const pThis,
     const KLineMessage * const pEncryptedMsg,
-    const uint8_t **ppSigned, ///< outputs the signed part of the incoming data
-    size_t *pSignedLen, ///< outputs the length of the data in ppSigned
-    const uint8_t **ppPlainText, ///< outputs the decrypted part of the incoming data.
-    size_t *pPlainTextLen ///< outputs the length of the plaintext
+    const KLineAuthMessage **ppSigned, ///< outputs the signed part of the incoming data    
+    const uint8_t **ppEPayloadPlainText, ///< outputs the decrypted part of the incoming data.
+    size_t *pEPayloadPlainText ///< outputs the length of the plaintext
   );
 
 #ifdef __cplusplus
