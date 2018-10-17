@@ -22,7 +22,9 @@ extern "C" {
 
   // Pairing of CEM to PAK
   typedef struct PACKED KLinePairingTag {
+    // New SK (128 bits) (AES-CCM-128 for CEM->PAK)
     uint8_t cemToPak[16];
+    // New SID(128 bits) (AES - CCM - 128 for PAK->CEM)
     uint8_t pakToCem[16];
   } KLinePairing;
 

@@ -327,12 +327,12 @@ KLineMessage *KLineAllocAuthenticatedMessage(
     pAddl[0] = pAead->hdr.txcnt;
     memcpy(&pAddl[1], pPayloadSigned, payloadSizeSigned);
 
-    const size_t nonceLen = MIN(sizeof(pThis->authTx.noncePlusCnt), 13);
+    const size_t nonceLen = MIN(sizeof(pThis->authTx.nonce), 13);
 
     const int stat = mbedtls_ccm_encrypt_and_tag(
       &pThis->authTx.ccm, //ctx
       plainTextSize, //length
-      pThis->authTx.noncePlusCnt, //iv
+      pThis->authTx.nonce.iv.iv, //iv
       nonceLen, //iv_len
       pAddl, // add
       addlDataSize, // add_len
@@ -417,13 +417,13 @@ KLineMessage *KLineAllocDecryptMessage(
           memcpy(&pAddl[1], pPayloadSigned, payloadSizeSigned);
         }
 
-        const size_t nonceLen = MIN(sizeof(pThis->authRx.noncePlusCnt), 13);
+        const size_t nonceLen = MIN(sizeof(pThis->authRx.nonce), 13);
 
 
         const int stat = mbedtls_ccm_auth_decrypt(
           &pThis->authRx.ccm, // ctx
           cipherTextSize, // length
-          pThis->authRx.noncePlusCnt, // iv
+          pThis->authRx.nonce.iv.iv, // iv
           nonceLen, // iv_len
           pAddl, // add
           addlDataSize, // add_len
