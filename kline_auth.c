@@ -244,10 +244,9 @@ KLineMessage *KLineCreatePairing(
 // ////////////////////////////////////////////////////////////////////////////
 static int calcCmacTag(
   KLineAuthTxRx *pAuth,
-  const uint8_t * sDataPtr,
-  const size_t sPayloadBytes,
-  const uint8_t * ePayloadPlainTextPtr,
-  const size_t ePayloadBytes,
+  KLineAuthMessage *pMsg,
+  size_t sDataSize, // scmd + spayload
+  size_t ePayloadBytes,
   uint8_t tag[8]
   ) {
   const size_t nonceLen = sizeof(pAuth->nonce);
@@ -263,19 +262,26 @@ static int calcCmacTag(
   assert(0 == stat);
 
   // CMAC over signed data
-  if ((sDataPtr) && (sPayloadBytes > 0)) {
-    stat = mbedtls_cipher_cmac_update(
+  stat = mbedtls_cipher_cmac_update(
       &pAuth->cmac,
-      sDataPtr,
-      sPayloadBytes);
-    assert(0 == stat);
-  }
+      &pMsg->hdr.txcnt,
+      1);
+  assert(0 == stat);
+
+  assert(sDataSize >= 1);
+
+  // CMAC over sCMD and payload (== sDataSize)
+  stat = mbedtls_cipher_cmac_update(
+    &pAuth->cmac,
+    pMsg->sdata.u.rawBytes,
+    sDataSize);
+  assert(0 == stat);
 
   // CMAC over encrypted data.
-  if ((ePayloadPlainTextPtr) && (ePayloadBytes > 0)) {
+  if (ePayloadBytes > 0) {
     stat = mbedtls_cipher_cmac_update(
       &pAuth->cmac,
-      ePayloadPlainTextPtr,
+      &pMsg->sdata.u.sdata.spayload_and_edata[sDataSize-1],
       ePayloadBytes);
     assert(0 == stat);
   }
@@ -362,7 +368,7 @@ KLineMessage *KLineAllocAuthenticatedMessage(
     }
 
     const int stat = 
-      calcCmacTag(&pThis->authTx, sPayloadPtr, sPayloadBytes, ePayloadPlainTextPtr, ePayloadBytes, tag);
+      calcCmacTag(&pThis->authTx, &pM->u.aead, SDATA_LEN, ePayloadBytes, tag);
 
 #endif
     assert(0 == stat);
@@ -457,7 +463,7 @@ KLineMessage *KLineAllocDecryptMessage(
 
         uint8_t tagTmp[8] = { 0 };
         int stat =
-          calcCmacTag(&pThis->authRx, sDataPtr, sPayloadBytes, pPlainText, ePayloadBytes, tagTmp);
+          calcCmacTag(&pThis->authRx, &pMsgOut->u.aead, sDataBytes, ePayloadBytes, tagTmp);
         assert(0 == stat);
 
         stat = memcmp(tag, tagTmp, 8);
