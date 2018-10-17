@@ -20,35 +20,44 @@ extern "C" {
 #endif
 #include "utils/pack_push.h"
 
-
+  // Pairing of CEM to PAK
   typedef struct PACKED KLinePairingTag {
     uint8_t cemToPak[16];
     uint8_t pakToCem[16];
   } KLinePairing;
 
+  // Challenge is 120 bits long
   typedef struct PACKED KLineChallengeTag{
-    uint8_t challenge[120];
+    uint8_t challenge120[15]; // 120 bits
   } KLineChallenge;
 
+  // Each message has a destination addr, a length, and specifies a function
   typedef struct PACKED KLineMessageHdrTag {
     uint8_t addr;
     uint8_t length;
     uint8_t function;    
   } KLineMessageHdr;
   
+  // Every physical message has a checksum, which is an XOR of all bits in the packet.
   typedef struct PACKED KLineMessageFtrTag {
     uint8_t cs;
   } KLineMessageFtr;
 
+  // Authenticaded messages are packed inside a KLineMessage 
+  // (see the union in KLineMessage)
   typedef struct PACKED KLineAuthMessageHdrTag {
-    uint8_t txcnt; // Least Significant Bits of 8-bit TXCNT part of message nonce.
-    uint8_t sdata_len; // Specifies the length H, in bytes, of unencrypted, signed data preceding encrypted data. Also referred to as SPAYLOAD length.
+    // txcnt is another 8-bits of the 128-bit nonce used for message authentication. Shall never roll over.
+    uint8_t txcnt; 
+    // Specifies the length H, in bytes, of unencrypted, signed data preceding encrypted data. Also referred to as SPAYLOAD length.
+    uint8_t sdata_len; 
   } KLineAuthMessageHdr;
 
+  // The last 8 bits of an authenticated message is the signature.
   typedef struct PACKED KLineAuthMessageFtrTag {
     uint8_t sig[8];
   } KLineAuthMessageFtr;
 
+  // An authenticaed message consists of the header, then signed, then encrypted data, then footer.
   typedef struct PACKED KLineAuthMessageTag {
     KLineAuthMessageHdr hdr;
     uint8_t sdata_and_edata[1];
@@ -58,7 +67,10 @@ extern "C" {
     KLineAuthMessageFtr ftr;
   } KLineAuthMessage;
 
-  // Never use this object directly.
+  // KLine message. Note, this shall never be used directly - it is simply for reference.
+  // Messages must be allocated dynamically depending on the size of the payload.  
+  // Location of "ftr" will therefore vary 
+  // depending on the size of the payload.
   typedef struct PACKED KLineMessageTag {
     KLineMessageHdr hdr;
     union {
@@ -67,6 +79,8 @@ extern "C" {
       KLineAuthMessage aead;
       uint8_t          payload[1];
     }u;
+    
+    // Footer contains checksum. Note its placement must be calculated depending on length of the message.
     KLineMessageFtr ftr;
   } KLineMessage;
 
@@ -97,9 +111,18 @@ extern "C" {
 #else
     mbedtls_cipher_context_t cmac;
 #endif
-    uint8_t noncePlusCnt[16];
+    union {
+      struct {
+        uint8_t tx_cnt;
+        KLineChallenge challenge;
+      } noncePlusChallenge;
+      struct {
+        uint8_t iv[16];
+      }iv;
+    } nonce;
   } KLineAuthTxRx;
 
+  // Object which handles transmission and reception of authenticated messages.
   typedef struct KLineAuthTag {
     KLineAuthTxRx authTx;
     KLineAuthTxRx authRx;
@@ -107,26 +130,26 @@ extern "C" {
 
   // Initialize the PAKM side
   void KLineAuthPairPAKM(
-    KLineAuth *pThis,
+    KLineAuth * const pThis,
     const KLinePairing *pPairing);
 
   // Initialize the CEM side from a KLinePairing struct.
   void KLineAuthPairCEM(
-    KLineAuth *pThis,
+    KLineAuth * const pThis,
     const KLinePairing *pPairing);
 
   void KLineAuthDestruct(
-    KLineAuth *pThis
+    KLineAuth * const pThis
   );
 
   void KLineAuthChallenge(
     KLineAuth * const pThis,
     /// txChallenge: Sets the 120-bit challenge set by the remote device, 
     // allowing ourselves to authenticate
-    const KLineChallenge txChallenge[15],
+    const KLineChallenge *txChallenge,
 
     /// rxChallenge: Sets the challenge set locally, allowing the remote to authenticate.
-    const KLineChallenge rxChallenge[15]
+    const KLineChallenge *rxChallenge
   );
 
   // Optional callback to allow generation of random data.
@@ -134,7 +157,7 @@ extern "C" {
 
   // Create a challenge message.
   KLineMessage *KLineCreateChallenge(
-    KLineAuth *pThis,
+    KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
@@ -143,7 +166,7 @@ extern "C" {
 
   // Create a pairing message.
   KLineMessage *KLineCreatePairing(
-    KLineAuth *pThis,
+    KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
@@ -152,7 +175,7 @@ extern "C" {
 
   // Allocate an encrypted message.
   KLineMessage *KLineAllocAuthenticatedMessage(
-    KLineAuth *pThis,
+    KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
     const void *pPayloadSigned, // Signed data
@@ -164,7 +187,7 @@ extern "C" {
   // Frees and decrypts pEncryptedMsg.
   // Returns non-null message if decryption is successfull.
   KLineMessage *KLineAllocDecryptMessage(
-    KLineAuth *pThis,
+    KLineAuth * const pThis,
     const KLineMessage * const pEncryptedMsg,
     const uint8_t **ppSigned, ///< outputs the signed part of the incoming data
     size_t *pSignedLen, ///< outputs the length of the data in ppSigned

@@ -146,7 +146,7 @@ static void KLineInitKey(
 
 // ////////////////////////////////////////////////////////////////////////////
 void KLineAuthDestruct(
-  KLineAuth *pThis
+  KLineAuth * const pThis
 )
 {
 #ifdef KLINE_CCM
@@ -160,7 +160,7 @@ void KLineAuthDestruct(
 
 // ////////////////////////////////////////////////////////////////////////////
 static void KLineAuthPair(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   bool isPakm,
   const KLinePairing * const pPairing)
 {
@@ -174,7 +174,7 @@ static void KLineAuthPair(
 // ////////////////////////////////////////////////////////////////////////////
 // Initialize the PAKM side
 void KLineAuthPairPAKM(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   const KLinePairing *pPairing) {
   memset(pThis, 0, sizeof(KLineAuth));
   KLineAuthPair(pThis, true, pPairing);
@@ -183,7 +183,7 @@ void KLineAuthPairPAKM(
 // ////////////////////////////////////////////////////////////////////////////
 // Initialize the CEM side
 void KLineAuthPairCEM(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   const KLinePairing *pPairing) {
   memset(pThis, 0, sizeof(KLineAuth));
   KLineAuthPair(pThis, false, pPairing);
@@ -192,23 +192,25 @@ void KLineAuthPairCEM(
 // ////////////////////////////////////////////////////////////////////////////
 void KLineAuthChallenge(
   KLineAuth * const pThis,
-  const KLineChallenge txChallenge[15],
-  const KLineChallenge rxChallenge[15]
+  const KLineChallenge *txChallenge,
+  const KLineChallenge *rxChallenge
 ) {
   if (txChallenge) {
-    pThis->authTx.noncePlusCnt[0] = 1;
-    memcpy(&pThis->authTx.noncePlusCnt[1], txChallenge, 15);
+    // Next sent message will use nonce of 0
+    pThis->authTx.nonce.noncePlusChallenge.tx_cnt = 1;
+    memcpy(&pThis->authTx.nonce.noncePlusChallenge.challenge.challenge120, txChallenge, sizeof(KLineChallenge));
   }
 
   if (rxChallenge) {
-    pThis->authRx.noncePlusCnt[0] = 0;
-    memcpy(&pThis->authRx.noncePlusCnt[1], rxChallenge, 15);
+    // Receiver believes its last received message is 0.
+    pThis->authRx.nonce.noncePlusChallenge.tx_cnt = 0;
+    memcpy(&pThis->authRx.nonce.noncePlusChallenge.challenge.challenge120, rxChallenge, sizeof(KLineChallenge));
   }
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreateChallenge(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,
@@ -217,13 +219,13 @@ KLineMessage *KLineCreateChallenge(
 {
   RandombytesFnPtr rndFn = (randFn) ? randFn : defaultrandombytesFn;
   KLineChallenge challenge;
-  rndFn(randFnData, challenge.challenge, sizeof(challenge.challenge));
+  rndFn(randFnData, challenge.challenge120, sizeof(challenge.challenge120));
   return KLineAllocMessage(addr, func, sizeof(challenge), &challenge);
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreatePairing(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,
@@ -247,7 +249,7 @@ static int calcCmacTag(
   const size_t plainTextSize,
   uint8_t tag[8]
   ) {
-  const size_t nonceLen = sizeof(pAuth->noncePlusCnt);
+  const size_t nonceLen = sizeof(pAuth->nonce);
 
   int stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   assert(0 == stat);
@@ -255,8 +257,8 @@ static int calcCmacTag(
   // CMAC over NONCE
   stat = mbedtls_cipher_cmac_update(
     &pAuth->cmac,
-    pAuth->noncePlusCnt,
-    sizeof(pAuth->noncePlusCnt));
+    pAuth->nonce.iv.iv,
+    sizeof(pAuth->nonce.iv.iv));
   assert(0 == stat);
 
   // CMAC over signed data
@@ -291,7 +293,7 @@ static int calcCmacTag(
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocAuthenticatedMessage(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   const uint8_t addr,
   const uint8_t func,
   const void *pPayloadSigned,
@@ -311,7 +313,7 @@ KLineMessage *KLineAllocAuthenticatedMessage(
   pM->hdr.function = func;
   pM->hdr.length = (uint8_t)(sz - 1 - 1); // Size - sizeof(addr) - sizeof(length)
   KLineAuthMessage *pAead = (KLineAuthMessage *)pM->u.payload;
-  pAead->hdr.txcnt = pThis->authTx.noncePlusCnt[0];
+  pAead->hdr.txcnt = pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
   pAead->hdr.sdata_len = (uint8_t)payloadSizeSigned;
   memcpy(&pAead->sdata_and_edata[0], pPayloadSigned, payloadSizeSigned);
   uint8_t * const pCipherText = &pAead->sdata_and_edata[payloadSizeSigned];
@@ -358,14 +360,14 @@ KLineMessage *KLineAllocAuthenticatedMessage(
 
   assert(0 == KLineCheckCs(pM));
 
-  ++pThis->authTx.noncePlusCnt[0];
-  assert(0 != pThis->authTx.noncePlusCnt[0]);
+  ++pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
+  assert(0 != pThis->authTx.nonce.noncePlusChallenge.tx_cnt);
   return pM;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocDecryptMessage(
-  KLineAuth *pThis,
+  KLineAuth * const pThis,
   const KLineMessage * const pEncryptedMsg,
   const uint8_t **ppSigned,
   size_t *pSignedLen,
@@ -377,9 +379,9 @@ KLineMessage *KLineAllocDecryptMessage(
   if (0 == KLineCheckCs(pEncryptedMsg)) {
     const size_t totalPacketSize = getPacketSize(pEncryptedMsg);
     const KLineAuthMessage * const pAeadIn = &pEncryptedMsg->u.aead;
-    const int diff = pAeadIn->hdr.txcnt - pThis->authRx.noncePlusCnt[0];
+    const int diff = pAeadIn->hdr.txcnt - pThis->authRx.nonce.noncePlusChallenge.tx_cnt;
     if (diff > 0) {
-      pThis->authRx.noncePlusCnt[0] = pAeadIn->hdr.txcnt;
+      pThis->authRx.nonce.noncePlusChallenge.tx_cnt = pAeadIn->hdr.txcnt;
       pM = Malloc(totalPacketSize);
 
       // Make a copy of the encrypted packet, which we will overwrite.
