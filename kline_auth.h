@@ -192,7 +192,8 @@ extern "C" {
     const size_t payloadSizeEncrypted // Size of encrypted data.
   );
 
-  // Frees and decrypts pEncryptedMsg.
+  // Frees and decrypts pEncryptedMsg, and allocates a new message to hold the
+  // decrypted version.
   // Returns non-null message if decryption is successfull.
   KLineMessage *KLineAllocDecryptMessage(
     KLineAuth * const pThis,

@@ -245,7 +245,6 @@ KLineMessage *KLineCreatePairing(
 static int calcCmacTag(
   KLineAuthTxRx *pAuth,
   KLineAuthMessage *pMsg,
-  size_t sDataSize, // scmd + spayload
   size_t ePayloadBytes,
   uint8_t tag[8]
   ) {
@@ -254,6 +253,8 @@ static int calcCmacTag(
   int stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   assert(0 == stat);
 
+  const size_t sDataSize = pMsg->hdr.sdata_len;
+
   // CMAC over NONCE
   stat = mbedtls_cipher_cmac_update(
     &pAuth->cmac,
@@ -261,14 +262,14 @@ static int calcCmacTag(
     sizeof(pAuth->nonce.iv.iv));
   assert(0 == stat);
 
-  // CMAC over signed data
+  // CMAC over signed data: TODO: Should additional data include txcnt? It is actually redundant.
   stat = mbedtls_cipher_cmac_update(
       &pAuth->cmac,
       &pMsg->hdr.txcnt,
       1);
   assert(0 == stat);
 
-  assert(sDataSize >= 1);
+  assert(sDataSize >= 1); // As sdata includes scmd, sDataSize should ALWAYS be >= 1.
 
   // CMAC over sCMD and payload (== sDataSize)
   stat = mbedtls_cipher_cmac_update(
@@ -298,11 +299,13 @@ static int calcCmacTag(
 }
 #endif // #ifdef KLINE_CMAC
 
-typedef struct AdditionalDataTag {
-  uint8_t tx_cnt;
-  uint8_t scmd;
-  uint8_t spayload[1];
-}AdditionalData;
+#ifdef KLINE_CCM
+typedef struct CcmAdditionalDataTag {
+  uint8_t tx_cnt; // Document specifies tx_cnt. However, this might be redundant!
+  uint8_t scmd;   // Document specifies scmd is part of sdata.
+  uint8_t spayload[1]; // Document specifies that spayload is part of sdata.
+}CcmAdditionalData;
+#endif
 
 #define AUTH_SCMD_KLINE_PAYLOAD_SZ(spayloadbytes, epayloadbytes) \
   (sizeof(KLineAuthMessageHdr) + 1 + (spayloadbytes) + (epayloadbytes) + 8)
@@ -341,7 +344,7 @@ KLineMessage *KLineAllocAuthenticatedMessage(
 #ifdef KLINE_CCM
     // Include TXCNT in the signed data, as specified in the document
     const size_t addlDataSize = 1 + 1 + sPayloadBytes; // tx_cnt + scmd + spayload
-    AdditionalData * const pAddlData = (AdditionalData *)Malloc(addlDataSize);
+    CcmAdditionalData * const pAddlData = (CcmAdditionalData *)Malloc(addlDataSize);
     pAddlData->tx_cnt = pM->u.aead.hdr.txcnt;
     pAddlData->scmd = pM->u.aead.sdata.u.sdata.scmd;
     memcpy(pAddlData->spayload, pM->u.aead.sdata.u.sdata.spayload_and_edata, sPayloadBytes);
@@ -368,7 +371,7 @@ KLineMessage *KLineAllocAuthenticatedMessage(
     }
 
     const int stat = 
-      calcCmacTag(&pThis->authTx, &pM->u.aead, SDATA_LEN, ePayloadBytes, tag);
+      calcCmacTag(&pThis->authTx, &pM->u.aead, ePayloadBytes, tag);
 
 #endif
     assert(0 == stat);
@@ -432,7 +435,7 @@ KLineMessage *KLineAllocDecryptMessage(
 #ifdef KLINE_CCM
         // Include TXCNT in the signed data.
         const size_t addlDataSize = 1 + 1 + sPayloadBytes; // tx_cnt + scmd + spayload
-        AdditionalData * const pAddlData = (AdditionalData *)Malloc(addlDataSize);
+        CcmAdditionalData * const pAddlData = (CcmAdditionalData *)Malloc(addlDataSize);
         pAddlData->tx_cnt = pMsgIn->u.aead.hdr.txcnt;
         pAddlData->scmd = pMsgIn->u.aead.sdata.u.sdata.scmd;
         if (sPayloadBytes > 0) {
@@ -463,7 +466,7 @@ KLineMessage *KLineAllocDecryptMessage(
 
         uint8_t tagTmp[8] = { 0 };
         int stat =
-          calcCmacTag(&pThis->authRx, &pMsgOut->u.aead, sDataBytes, ePayloadBytes, tagTmp);
+          calcCmacTag(&pThis->authRx, &pMsgOut->u.aead, ePayloadBytes, tagTmp);
         assert(0 == stat);
 
         stat = memcmp(tag, tagTmp, 8);
