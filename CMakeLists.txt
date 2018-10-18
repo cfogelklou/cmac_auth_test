@@ -4,8 +4,6 @@ project(bus_auth)
 set(CMAKE_CXX_STANDARD 11)
 
 add_definitions(-D_CONSOLE)
-add_definitions(-DKLINE_CMAC)
-# add_definitions(-DKLINE_TXCNT_IN_SIG)
 
 if (WIN32)
     add_definitions(-DWIN32)

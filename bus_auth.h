@@ -1,12 +1,8 @@
-#ifndef KLINE_CCM_H__
-#define KLINE_CCM_H__
+#ifndef BUS_AUTHENTICATION_H__
+#define BUS_AUTHENTICATION_H__
 
-#ifndef KLINE_CMAC
-#include "ccm.h"
-#define KLINE_CCM
-#else
 #include "cmac.h"
-#endif
+
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -66,7 +62,7 @@ extern "C" {
       union {
         struct {
           uint8_t scmd;
-          uint8_t spayload_and_edata[1];
+          uint8_t spayload[1];
         } sdata;
         uint8_t rawBytes[1];
       }u;
@@ -113,11 +109,7 @@ extern "C" {
   uint8_t KLineAddCs(KLineMessage * const pM);
 
   typedef struct KLineAuthTxRxTag {
-#ifdef KLINE_CCM
-    mbedtls_ccm_context ccm;
-#else
     mbedtls_cipher_context_t cmac;
-#endif
     union {
       struct {
         uint8_t tx_cnt;
@@ -186,7 +178,6 @@ extern "C" {
 
   // Create a challenge message.
   KLineMessage *KLineCreateChallenge(
-    KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
@@ -195,7 +186,6 @@ extern "C" {
 
   // Create a pairing message.
   KLineMessage *KLineCreatePairing(
-    KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
@@ -209,20 +199,16 @@ extern "C" {
     const uint8_t func,
     const uint8_t scmd,
     const void *pPayloadSigned, // Signed data
-    const size_t payloadSizeSigned, // Size of signed data
-    const void *pPayloadEncrypted, // Encrypted data
-    const size_t payloadSizeEncrypted // Size of encrypted data.
+    const size_t payloadSizeSigned // Size of signed data
   );
 
   // Frees and decrypts pEncryptedMsg, and allocates a new message to hold the
   // decrypted version.
   // Returns non-null message if decryption is successfull.
-  KLineMessage *KLineAllocDecryptMessage(
+  KLineMessage *KLineAuthenticateMessage(
     KLineAuth * const pThis,
     KLineMessage ** ppMsg, ///< Incoming message, will be freed here, therefore it is a ptr-ptr.
-    const KLineAuthMessage **ppSigned, ///< outputs the signed part of the incoming data    
-    const uint8_t **ppEPayloadPlainText, ///< outputs the decrypted part of the incoming data.
-    size_t *pEPayloadPlainText ///< outputs the length of the plaintext
+    const KLineAuthMessage **ppSigned ///< outputs the signed part of the incoming data    
   );
 
 #ifdef __cplusplus

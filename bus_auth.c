@@ -133,12 +133,7 @@ static void KLineInitKey(
   const uint8_t * const pKey
   )
 {
-#ifdef KLINE_CCM
-  mbedtls_ccm_init(&pAuth->ccm);
-  int stat = mbedtls_ccm_setkey(&pAuth->ccm, MBEDTLS_CIPHER_ID_AES, pKey, 128);
-  ASSERT(stat == 0);
 
-#else
   uint8_t tmp[16];
   const mbedtls_cipher_info_t * const pCInfo = 
     mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
@@ -157,7 +152,6 @@ static void KLineInitKey(
   stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   ASSERT(0 == stat);
 
-#endif
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -165,13 +159,8 @@ void KLineAuthDestruct(
   KLineAuth * const pThis
 )
 {
-#ifdef KLINE_CCM
-  mbedtls_ccm_free(&pThis->authRx.ccm);
-  mbedtls_ccm_free(&pThis->authTx.ccm);
-#else
   mbedtls_cipher_free( &pThis->authRx.cmac );
   mbedtls_cipher_free( &pThis->authTx.cmac );
-#endif
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -240,7 +229,6 @@ void KLineAuthChallenge(
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreateChallenge(
-  KLineAuth * const pThis,
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,
@@ -255,7 +243,6 @@ KLineMessage *KLineCreateChallenge(
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreatePairing(
-  KLineAuth * const pThis,
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,
@@ -269,62 +256,27 @@ KLineMessage *KLineCreatePairing(
   return KLineAllocMessage(addr, func, sizeof(pairing), &pairing);
 }
 
-#ifdef KLINE_CMAC
 // ////////////////////////////////////////////////////////////////////////////
-static int calcCmacTag(
+static int cmacTag(
   KLineAuthTxRx *pAuth,
   KLineAuthMessage *pMsg,
-  size_t ePayloadBytes,
   uint8_t tag[8]
   ) {
-  const size_t nonceLen = sizeof(pAuth->nonce);
 
   int stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   ASSERT(0 == stat);
 
   const size_t sDataSize = pMsg->hdr.sdata_len;
 
-#if 1
   // CMAC over NONCE
   stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pAuth->nonce.iv.iv, sizeof(pAuth->nonce.iv.iv));  
-#else
-  // CMAC over NONCE. This works exactly the same way, and shows that doing tx_cnt, then challenge, is equivalent to
-  // CMAC over the whole IV.
-  stat = mbedtls_cipher_cmac_update( &pAuth->cmac, &pAuth->nonce.noncePlusChallenge.tx_cnt,  1);
   ASSERT(0 == stat);
-  stat = mbedtls_cipher_cmac_update( &pAuth->cmac, pAuth->nonce.noncePlusChallenge.challenge.challenge120, 15);
-#endif
-  ASSERT(0 == stat);
-
-#ifdef KLINE_TXCNT_IN_SIG
-#error "This is pointless, so don't do it.'"
-  // CMAC over signed data: TODO: Should additional data include txcnt? It is actually redundant.
-  stat = mbedtls_cipher_cmac_update(
-      &pAuth->cmac,
-      &pMsg->hdr.txcnt,
-      1);
-  ASSERT(0 == stat);
-#endif
 
   ASSERT(sDataSize >= 1); // As sdata includes scmd, sDataSize should ALWAYS be >= 1.
 
   // CMAC over sCMD and payload (== sDataSize)
-  stat = mbedtls_cipher_cmac_update(
-    &pAuth->cmac,
-    pMsg->sdata.u.rawBytes,
-    sDataSize);
+  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pMsg->sdata.u.rawBytes, sDataSize);
   ASSERT(0 == stat);
-
-  // CMAC over encrypted data.
-  if (ePayloadBytes > 0) {
-    stat = mbedtls_cipher_cmac_update(
-      &pAuth->cmac,
-      &pMsg->sdata.u.sdata.spayload_and_edata[sDataSize-1],
-      ePayloadBytes);
-    ASSERT(0 == stat);
-  }
-
-  // TODO: Padding?
 
   uint8_t tagTmp[16 + 1] = { 0 };
   stat = mbedtls_cipher_cmac_finish(&pAuth->cmac, tagTmp);
@@ -334,18 +286,10 @@ static int calcCmacTag(
 
   return stat;
 }
-#endif // #ifdef KLINE_CMAC
 
-#ifdef KLINE_CCM
-typedef struct CcmAdditionalDataTag {
-  uint8_t tx_cnt; // Document specifies tx_cnt. However, this might be redundant!
-  uint8_t scmd;   // Document specifies scmd is part of sdata.
-  uint8_t spayload[1]; // Document specifies that spayload is part of sdata.
-}CcmAdditionalData;
-#endif
 
-#define AUTH_SCMD_KLINE_PAYLOAD_SZ(spayloadbytes, epayloadbytes) \
-  (sizeof(KLineAuthMessageHdr) + 1 + (spayloadbytes) + (epayloadbytes) + 8)
+#define AUTH_SCMD_KLINE_PAYLOAD_SZ(spayloadbytes) \
+  (sizeof(KLineAuthMessageHdr) + 1 + (spayloadbytes) + 8)
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineAllocAuthenticatedMessage(
@@ -354,14 +298,12 @@ KLineMessage *KLineAllocAuthenticatedMessage(
   const uint8_t func,
   const uint8_t scmd,
   const void *sPayloadPtr,
-  const size_t sPayloadBytes,
-  const void *ePayloadPlainTextPtr,
-  const size_t ePayloadBytes
+  const size_t sPayloadBytes
 ) {
   
   // Calculate the size of the data which will be signed.
   const size_t SDATA_LEN = 1 + sPayloadBytes; // scmd + sPayloadBytes;
-  const size_t AUTH_SCMD_PAYLOAD_SZ = AUTH_SCMD_KLINE_PAYLOAD_SZ(sPayloadBytes, ePayloadBytes);
+  const size_t AUTH_SCMD_PAYLOAD_SZ = AUTH_SCMD_KLINE_PAYLOAD_SZ(sPayloadBytes);
 
   KLineMessage * const pM = KLineAllocMessage(addr, func, AUTH_SCMD_PAYLOAD_SZ, NULL);
 
@@ -371,59 +313,15 @@ KLineMessage *KLineAllocAuthenticatedMessage(
   pM->u.aead.sdata.u.sdata.scmd = scmd;
 
   // Copy the signed payload
-  memcpy(pM->u.aead.sdata.u.sdata.spayload_and_edata, sPayloadPtr, sPayloadBytes);
+  memcpy(pM->u.aead.sdata.u.sdata.spayload, sPayloadPtr, sPayloadBytes);
 
   // Get pointer to ciphertext out and the signature out
-  uint8_t * const ePayloadCipherTextPtr = &pM->u.aead.sdata.u.sdata.spayload_and_edata[sPayloadBytes];
-  uint8_t * const tag = &pM->u.aead.sdata.u.sdata.spayload_and_edata[sPayloadBytes + ePayloadBytes];
+  uint8_t * const tag = &pM->u.aead.sdata.u.sdata.spayload[sPayloadBytes];
   
-  {
-#ifdef KLINE_CCM
-#ifdef KLINE_TXCNT_IN_SIG
-    // Include TXCNT in the signed data, as specified in the document
-    const size_t addlDataSize = 1 + 1 + sPayloadBytes; // tx_cnt + scmd + spayload
-    CcmAdditionalData * const pAddlData = (CcmAdditionalData *)Malloc(addlDataSize);
-    pAddlData->tx_cnt = pM->u.aead.hdr.txcnt;
-    pAddlData->scmd = pM->u.aead.sdata.u.sdata.scmd;
-    memcpy(pAddlData->spayload, pM->u.aead.sdata.u.sdata.spayload_and_edata, sPayloadBytes);
-    const uint8_t * const pCcmSignedAddlData = &pAddlData->tx_cnt;
-#else // #ifdef KLINE_TXCNT_IN_SIG
-    const size_t addlDataSize = 1 + sPayloadBytes; // scmd + spayload
-    const uint8_t * const pCcmSignedAddlData = pM->u.aead.sdata.u.rawBytes;
-#endif // #ifdef KLINE_TXCNT_IN_SIG
-
-    const size_t nonceLen = MIN(sizeof(pThis->authTx.nonce), 13);
-
-    const int stat = mbedtls_ccm_encrypt_and_tag(
-      &pThis->authTx.ccm, //ctx
-      ePayloadBytes, //length (of ciphertext)
-      pThis->authTx.nonce.iv.iv, //iv
-      nonceLen, //iv_len
-      pCcmSignedAddlData, // add (additional data)
-      addlDataSize, // add_len (length of additional data)
-      ePayloadPlainTextPtr, // input (plain text)
-      ePayloadCipherTextPtr, //output (cipher text)
-      tag, 8);  //tag, tag_len
-
-#ifdef KLINE_TXCNT_IN_SIG
-    Free(pAddlData);
-#endif // #ifdef KLINE_TXCNT_IN_SIG
-#else    
-
-    // CMAC has no encryption; copy plaintext to ciphertext.
-    if ((ePayloadPlainTextPtr) && (ePayloadBytes > 0)) {
-      memcpy(ePayloadCipherTextPtr, ePayloadPlainTextPtr, ePayloadBytes);
-    }
-
-    const int stat = 
-      calcCmacTag(&pThis->authTx, &pM->u.aead, ePayloadBytes, tag);
-
-#endif
-    ASSERT(0 == stat);
-  }
+  const int stat = cmacTag(&pThis->authTx, &pM->u.aead, tag);
+  ASSERT(0 == stat);
 
   KLineAddCs(pM);
-
   ASSERT(0 == KLineCheckCs(pM));
 
   ++pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
@@ -433,12 +331,10 @@ KLineMessage *KLineAllocAuthenticatedMessage(
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-KLineMessage *KLineAllocDecryptMessage(
+KLineMessage *KLineAuthenticateMessage(
   KLineAuth * const pThis,
   KLineMessage ** ppMsgIn,
-  const KLineAuthMessage **ppSigned, ///< outputs the signed part of the incoming data    
-  const uint8_t **ppEPayloadPlainText, ///< outputs the decrypted part of the incoming data.
-  size_t *pEPayloadPlainText ///< outputs the length of the plaintext
+  const KLineAuthMessage **ppSigned ///< outputs the signed part of the incoming data    
 ) {
   ASSERT(ppMsgIn);
   KLineMessage * pMsgIn = *ppMsgIn;
@@ -457,93 +353,27 @@ KLineMessage *KLineAllocDecryptMessage(
       memcpy(pMsgOut, pMsgIn, totalPacketSize);
 
       const size_t sPayloadBytes = pMsgIn->u.aead.hdr.sdata_len - 1; // spayload
-      const size_t sDataBytes = pMsgIn->u.aead.hdr.sdata_len; // scmd + spayload
 
-      const uint8_t * pCipherText = &pMsgIn->u.aead.sdata.u.sdata.spayload_and_edata[sPayloadBytes];
-      uint8_t * const pPlainText = &pMsgOut->u.aead.sdata.u.sdata.spayload_and_edata[sPayloadBytes];
+      const uint8_t * const tag = &pMsgIn->u.aead.sdata.u.sdata.spayload[sPayloadBytes];
 
-      const size_t cipherTextSize =
-        totalPacketSize
-        - sizeof(KLineMessageHdr) // addr + length
-        - sizeof(KLineAuthMessageHdr) // txcnt + sdata_len
-        - sDataBytes // scmd + spayload
-        - 8 // signature
-        - sizeof(KLineMessageFtr); // cs
-      const size_t ePayloadBytes = cipherTextSize;
-
-      if (cipherTextSize > 0) {
-        memset(pPlainText, 0, cipherTextSize);
-      }
-
-      const uint8_t * const tag = &pMsgIn->u.aead.sdata.u.sdata.spayload_and_edata[sPayloadBytes + cipherTextSize];
-
-      {
-#ifdef KLINE_CCM
-#ifdef KLINE_TXCNT_IN_SIG
-        // Include TXCNT in the signed data.
-        const size_t addlDataSize = 1 + 1 + sPayloadBytes; // tx_cnt + scmd + spayload
-        CcmAdditionalData * const pAddlData = (CcmAdditionalData *)Malloc(addlDataSize);
-        pAddlData->tx_cnt = pMsgIn->u.aead.hdr.txcnt;
-        pAddlData->scmd = pMsgIn->u.aead.sdata.u.sdata.scmd;
-        if (sPayloadBytes > 0) {
-          memcpy(pAddlData->spayload, pMsgOut->u.aead.sdata.u.sdata.spayload_and_edata, sPayloadBytes);
-        }
-        const uint8_t * const pCcmSignedAddlData = &pAddlData->tx_cnt;
-#else
-        const size_t addlDataSize = 1 + sPayloadBytes; // scmd + spayload
-        const uint8_t * const pCcmSignedAddlData = pMsgOut->u.aead.sdata.u.rawBytes;
-#endif
-
-        const size_t nonceLen = MIN(sizeof(pThis->authRx.nonce), 13);
-
-        const int stat = mbedtls_ccm_auth_decrypt(
-          &pThis->authRx.ccm, // ctx
-          cipherTextSize, // length
-          pThis->authRx.nonce.iv.iv, // iv
-          nonceLen, // iv_len
-          pCcmSignedAddlData, // add
-          addlDataSize, // add_len
-          pCipherText, // input
-          pPlainText, // output
-          tag, 8 // tag, tag_len
-        );
-
-#ifdef KLINE_TXCNT_IN_SIG
-        Free(pAddlData);
-#endif
-        ASSERT_WARN(0 == stat);
-#else
-        // CMAC has no encryption; copy ciphertext to plaintext
-        if (cipherTextSize > 0) {
-          memcpy(pPlainText, pCipherText, cipherTextSize);
-        }
-
-        uint8_t tagTmp[8] = { 0 };
-        int stat =
-          calcCmacTag(&pThis->authRx, &pMsgOut->u.aead, ePayloadBytes, tagTmp);
-        ASSERT(0 == stat);
-
+      uint8_t tagTmp[8] = { 0 };
+      int stat = cmacTag(&pThis->authRx, &pMsgOut->u.aead, tagTmp);
+      ASSERT(0 == stat);
+      if (0 == stat) {
         stat = memcmp(tag, tagTmp, 8);
         ASSERT_WARN(0 == stat);
-#endif
+      }
 
-        // Output variables
-        if (0 == stat) {
-          if ((cipherTextSize > 0) && (ppEPayloadPlainText)) {
-            *ppEPayloadPlainText = pPlainText;
-          }
-          if (pEPayloadPlainText) {
-            *pEPayloadPlainText = cipherTextSize;
-          }
-          if ((sPayloadBytes > 0) && (ppSigned)) {
-            *ppSigned = &pMsgOut->u.aead;
-          }
+      // Output variables
+      if (0 == stat) {
+        if ((sPayloadBytes > 0) && (ppSigned)) {
+          *ppSigned = &pMsgOut->u.aead;
         }
-        else {
-          memset(pMsgOut, 0, totalPacketSize);
-          KLineFreeMessage(pMsgOut);
-          pMsgOut = NULL;
-        }
+      }
+      else {
+        memset(pMsgOut, 0, totalPacketSize);
+        KLineFreeMessage(pMsgOut);
+        pMsgOut = NULL;
       }
     }
   }
