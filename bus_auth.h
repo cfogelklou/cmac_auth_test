@@ -135,6 +135,11 @@ extern "C" {
     KLineAuthTxRx authRx;
   }  KLineAuth;
 
+  // Initializes with random data.
+  void KLineAuthInit(
+    KLineAuth * const pThis
+  );
+
   // Initialize the PAKM side
   void KLineAuthPairPAKM(
     KLineAuth * const pThis,
@@ -145,10 +150,22 @@ extern "C" {
     KLineAuth * const pThis,
     const KLinePairing *pPairing);
 
+  // Gets the current TXCNT (next message)
+  uint8_t KLineAuthGetTxCnt(
+    KLineAuth * const pThis
+  );
+
+  // Gets the current RXCNT (last received message.)
+  uint8_t KLineAuthGetRxCnt(
+    KLineAuth * const pThis
+  );
+
+  // Destructor
   void KLineAuthDestruct(
     KLineAuth * const pThis
   );
 
+  // Receives a 120-bit challenge
   void KLineAuthChallenge(
     KLineAuth * const pThis,
     /// txChallenge: Sets the 120-bit challenge set by the remote device, 
@@ -197,7 +214,7 @@ extern "C" {
   // Returns non-null message if decryption is successfull.
   KLineMessage *KLineAllocDecryptMessage(
     KLineAuth * const pThis,
-    const KLineMessage * const pEncryptedMsg,
+    KLineMessage ** ppMsg, ///< Incoming message, will be freed here, therefore it is a ptr-ptr.
     const KLineAuthMessage **ppSigned, ///< outputs the signed part of the incoming data    
     const uint8_t **ppEPayloadPlainText, ///< outputs the decrypted part of the incoming data.
     size_t *pEPayloadPlainText ///< outputs the length of the plaintext
