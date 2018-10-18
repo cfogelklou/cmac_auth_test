@@ -200,6 +200,7 @@ void KLineAuthInit(
   KLineInitKey(&pThis->authTx, key);
   defaultrandombytesFn(NULL, pThis->authTx.nonce.iv.iv, sizeof(&pThis->authTx.nonce.iv.iv));
   defaultrandombytesFn(NULL, pThis->authRx.nonce.iv.iv, sizeof(&pThis->authRx.nonce.iv.iv));
+  pThis->authRx.nonce.noncePlusChallenge.tx_cnt = 255;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -283,19 +284,17 @@ static int calcCmacTag(
 
   const size_t sDataSize = pMsg->hdr.sdata_len;
 
-#if 0
+#if 1
   // CMAC over NONCE
-  stat = mbedtls_cipher_cmac_update(
-    &pAuth->cmac,
-    pAuth->nonce.iv.iv,
-    sizeof(pAuth->nonce.iv.iv));
-  ASSERT(0 == stat);
+  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pAuth->nonce.iv.iv, sizeof(pAuth->nonce.iv.iv));  
 #else
-  // CMAC over NONCE
+  // CMAC over NONCE. This works exactly the same way, and shows that doing tx_cnt, then challenge, is equivalent to
+  // CMAC over the whole IV.
   stat = mbedtls_cipher_cmac_update( &pAuth->cmac, &pAuth->nonce.noncePlusChallenge.tx_cnt,  1);
-  stat = mbedtls_cipher_cmac_update( &pAuth->cmac, &pAuth->nonce.noncePlusChallenge.challenge.challenge120, 15);
   ASSERT(0 == stat);
+  stat = mbedtls_cipher_cmac_update( &pAuth->cmac, pAuth->nonce.noncePlusChallenge.challenge.challenge120, 15);
 #endif
+  ASSERT(0 == stat);
 
 #ifdef KLINE_TXCNT_IN_SIG
 #error "This is pointless, so don't do it.'"
@@ -449,8 +448,7 @@ KLineMessage *KLineAllocDecryptMessage(
     const size_t totalPacketSize = getPacketSize(pMsgIn);
 
     // Check that received message is after last received message.
-    const int diff = pMsgIn->u.aead.hdr.txcnt - pThis->authRx.nonce.noncePlusChallenge.tx_cnt;
-    if (diff > 0) {
+    if (pMsgIn->u.aead.hdr.txcnt > pThis->authRx.nonce.noncePlusChallenge.tx_cnt) {
 
       pThis->authRx.nonce.noncePlusChallenge.tx_cnt = pMsgIn->u.aead.hdr.txcnt;
       pMsgOut = Malloc(totalPacketSize);
