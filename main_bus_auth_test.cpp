@@ -13,9 +13,7 @@ static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
   }
 }
 
-
-int main(char **c, int v) {
-
+static void authTest0() {
   const KLineAuthMessage *pSigned;
   const uint8_t *pPlainText;
   size_t plainTextLen;
@@ -25,7 +23,7 @@ int main(char **c, int v) {
   KLineFreeMessage(pM);
 
   KLineAuth pak;
-  KLineAuth cem;  
+  KLineAuth cem;
 
   // CEM and PAK must pair with each other.
   pM = KLineCreatePairing(&cem, 0, 0, randombytes, NULL);
@@ -57,9 +55,9 @@ int main(char **c, int v) {
       &pak,
       pM,
       &pSigned, &pPlainText, &plainTextLen
-      );
+    );
 
-    assert(pSigned->hdr.sdata_len == 1+sizeof(signedMsg));
+    assert(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
     assert(0 == memcmp(pSigned->sdata.u.sdata.spayload_and_edata, signedMsg, sizeof(signedMsg)));
     assert(plainTextLen == 0);
     assert(NULL == pPlainText);
@@ -156,6 +154,12 @@ int main(char **c, int v) {
 
   KLineAuthDestruct(&pak);
   KLineAuthDestruct(&cem);
+}
+
+
+int main(char **c, int v) {
+
+  authTest0();
 
   return 0;
 }

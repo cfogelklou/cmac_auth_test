@@ -1,10 +1,29 @@
 
 #include "bus_auth.h"
 
-#include <assert.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h> // for NULL
+
+#define ASSERT(var) \
+  do { \
+    if (!(var)){AssertionFailed(__FILE__, __LINE__);} \
+  } while(0) \
+
+#define ASSERT_WARN(var) \
+  do { \
+    if (!(var)){AssertionWarningFailed(__FILE__, __LINE__);} \
+  } while(0) \
+
+static void AssertionFailed(const char * const f, const int line) {
+  printf("Assertion Failed: %s(%d)\r\n", f, line);
+  exit(-1);
+}
+
+static void AssertionWarningFailed(const char * const f, const int line) {
+  printf("Warning triggered at %s(%d)\r\n", f, line);
+}
 
 #ifndef MIN
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
@@ -17,13 +36,13 @@ extern "C" {
 // ////////////////////////////////////////////////////////////////////////////
 void *Malloc(const size_t sz) {
   void *p = malloc(sz);
-  assert(p);
+  ASSERT(p);
   return p;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 void Free(void *pMem) {
-  assert(pMem);
+  ASSERT(pMem);
   free(pMem);
 }
 
@@ -100,10 +119,8 @@ KLineMessage *KLineAllocMessage(
     }
   }
   
-  if (pPayloadCanBeNull) {
-    KLineAddCs(pM);
-    assert(0 == KLineCheckCs(pM));
-  }
+  KLineAddCs(pM);
+  ASSERT(0 == KLineCheckCs(pM));
   return pM;
 }
 
@@ -121,26 +138,26 @@ static void KLineInitKey(
 #ifdef KLINE_CCM
   mbedtls_ccm_init(&pAuth->ccm);
   int stat = mbedtls_ccm_setkey(&pAuth->ccm, MBEDTLS_CIPHER_ID_AES, pKey, 128);
-  assert(stat == 0);
+  ASSERT(stat == 0);
 
 #else
   uint8_t tmp[16];
   const mbedtls_cipher_info_t * const pCInfo = 
     mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
-  assert(NULL != pCInfo);
+  ASSERT(NULL != pCInfo);
   mbedtls_cipher_init(&pAuth->cmac);
 
   int stat = mbedtls_cipher_setup(&pAuth->cmac, pCInfo);
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
   stat = mbedtls_cipher_cmac_starts(&pAuth->cmac, pKey, 16 * 8);
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
   // Finish and reset, so can be started again without referring to key.
   stat = mbedtls_cipher_cmac_finish(&pAuth->cmac, tmp);
-  assert(0 == stat);
+  ASSERT(0 == stat);
   stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
 #endif
 }
@@ -251,7 +268,7 @@ static int calcCmacTag(
   const size_t nonceLen = sizeof(pAuth->nonce);
 
   int stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
   const size_t sDataSize = pMsg->hdr.sdata_len;
 
@@ -260,23 +277,23 @@ static int calcCmacTag(
     &pAuth->cmac,
     pAuth->nonce.iv.iv,
     sizeof(pAuth->nonce.iv.iv));
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
   // CMAC over signed data: TODO: Should additional data include txcnt? It is actually redundant.
   stat = mbedtls_cipher_cmac_update(
       &pAuth->cmac,
       &pMsg->hdr.txcnt,
       1);
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
-  assert(sDataSize >= 1); // As sdata includes scmd, sDataSize should ALWAYS be >= 1.
+  ASSERT(sDataSize >= 1); // As sdata includes scmd, sDataSize should ALWAYS be >= 1.
 
   // CMAC over sCMD and payload (== sDataSize)
   stat = mbedtls_cipher_cmac_update(
     &pAuth->cmac,
     pMsg->sdata.u.rawBytes,
     sDataSize);
-  assert(0 == stat);
+  ASSERT(0 == stat);
 
   // CMAC over encrypted data.
   if (ePayloadBytes > 0) {
@@ -284,15 +301,15 @@ static int calcCmacTag(
       &pAuth->cmac,
       &pMsg->sdata.u.sdata.spayload_and_edata[sDataSize-1],
       ePayloadBytes);
-    assert(0 == stat);
+    ASSERT(0 == stat);
   }
 
   // TODO: Padding?
 
   uint8_t tagTmp[16 + 1] = { 0 };
   stat = mbedtls_cipher_cmac_finish(&pAuth->cmac, tagTmp);
-  assert(0 == stat);
-  assert(0 == tagTmp[sizeof(tagTmp) - 1]);
+  ASSERT(0 == stat);
+  ASSERT(0 == tagTmp[sizeof(tagTmp) - 1]);
   memcpy(tag, tagTmp, 8);
 
   return stat;
@@ -374,15 +391,15 @@ KLineMessage *KLineAllocAuthenticatedMessage(
       calcCmacTag(&pThis->authTx, &pM->u.aead, ePayloadBytes, tag);
 
 #endif
-    assert(0 == stat);
+    ASSERT(0 == stat);
   }
 
   KLineAddCs(pM);
 
-  assert(0 == KLineCheckCs(pM));
+  ASSERT(0 == KLineCheckCs(pM));
 
   ++pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
-  assert(0 != pThis->authTx.nonce.noncePlusChallenge.tx_cnt);
+  ASSERT(0 != pThis->authTx.nonce.noncePlusChallenge.tx_cnt);
   
   return pM;
 }
@@ -457,7 +474,7 @@ KLineMessage *KLineAllocDecryptMessage(
         );
 
         Free(pAddlData);
-        assert(0 == stat);
+        ASSERT(0 == stat);
 #else
         // CMAC has no encryption; copy ciphertext to plaintext
         if (cipherTextSize > 0) {
@@ -467,10 +484,10 @@ KLineMessage *KLineAllocDecryptMessage(
         uint8_t tagTmp[8] = { 0 };
         int stat =
           calcCmacTag(&pThis->authRx, &pMsgOut->u.aead, ePayloadBytes, tagTmp);
-        assert(0 == stat);
+        ASSERT(0 == stat);
 
         stat = memcmp(tag, tagTmp, 8);
-        assert(0 == stat);
+        ASSERT(0 == stat);
 #endif
 
         // Output variables
