@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <cassert>
+#include <cstring>
 
 #include "bus_auth.h"
 

@@ -100,7 +100,7 @@ KLineMessage *KLineAllocMessage(
     }
   }
   
-  if (pPayloadCanBeNull) {
+  if (pPayloadCanBeNull || 0 == payloadSize) {
     KLineAddCs(pM);
     assert(0 == KLineCheckCs(pM));
   }
