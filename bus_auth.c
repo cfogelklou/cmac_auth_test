@@ -10,10 +10,6 @@
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 // ////////////////////////////////////////////////////////////////////////////
 void *Malloc(const size_t sz) {
   void *p = malloc(sz);
@@ -491,7 +487,3 @@ KLineMessage *KLineAllocDecryptMessage(
   Free(pMsgIn);
   return pMsgOut;
 }
-
-#ifdef __cplusplus
-}
-#endif
