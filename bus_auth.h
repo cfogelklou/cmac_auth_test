@@ -160,6 +160,11 @@ extern "C" {
     KLineAuth * const pThis
   );
 
+  void KLineAuthSetTxCnt(
+    KLineAuth * const pThis,
+    const uint8_t txcnt
+  );
+
   // Destructor
   void KLineAuthDestruct(
     KLineAuth * const pThis

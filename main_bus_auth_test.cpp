@@ -86,6 +86,63 @@ static void wakeupTest() {
   
 }
 
+// Test case for first message from PAK to CEM after sleep.
+static void wakeupTest1() {
+  const char signedMsg[] = "signed";
+  KLineMessage *pTx;
+  KLineMessage *pRx;
+  KLineAuth pak;
+  KLineAuth cem;
+
+  KLineAuthInit(&pak);
+  KLineAuthInit(&cem);
+
+  // Counters should not match and should not be zero as no challenge yet.
+  ASSERT_WARN(0 != KLineAuthGetTxCnt(&pak));
+  ASSERT_WARN(0 != KLineAuthGetRxCnt(&cem));
+  ASSERT_WARN(KLineAuthGetTxCnt(&pak) != KLineAuthGetRxCnt(&cem));
+
+  // CEM and PAK must pair with each other.
+  pTx = KLineCreatePairing(&cem, 0, 0, randombytes, NULL);
+  KLineAuthPairCEM(&cem, &pTx->u.pairing);
+  KLineAuthPairPAKM(&pak, &pTx->u.pairing);
+  KLineFreeMessage(pTx);
+
+  // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
+  // Currently only CEM generates the challenge.
+  pTx = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
+  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge);
+  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge);
+  KLineFreeMessage(pTx);
+
+  KLineAuthSetTxCnt(&pak, 0);
+
+  // Allocate and send a message, which will FAIL as no challenge yet.
+  pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg), NULL, 0);
+  pRx = KLineAllocDecryptMessage(&cem, &pTx, NULL, NULL, NULL);
+  ASSERT(NULL == pRx);
+  if (pRx) { KLineFreeMessage(pRx); }
+
+  // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
+  // Currently only CEM generates the challenge.
+  pTx = KLineCreateChallenge(&cem, 0, 0, randombytes, NULL);
+  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge);
+  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge);
+  KLineFreeMessage(pTx);
+
+  // RX Counter (last message received) set to 1, TXCNT set to 1
+  ASSERT_WARN(1 == KLineAuthGetTxCnt(&pak));
+  ASSERT_WARN(0 == KLineAuthGetRxCnt(&cem));
+
+  // Allocate and send a message, which will be OK as now there is a session
+  pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg), NULL, 0);
+  pRx = KLineAllocDecryptMessage(&cem, &pTx, NULL, NULL, NULL);
+  ASSERT(NULL != pRx);
+  if (pRx) { KLineFreeMessage(pRx); }
+
+}
+
+
 static void authTest0() {
   const KLineAuthMessage *pSigned;
   const uint8_t *pPlainText;
@@ -237,6 +294,7 @@ int main(char **c, int v) {
 
   authTest0();
   wakeupTest();
+  wakeupTest1();
 
   return 0;
 }
