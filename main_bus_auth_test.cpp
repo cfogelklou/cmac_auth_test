@@ -38,7 +38,7 @@ static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
 static void wakeupTest() {
   const char signedMsg[] = "signed";
   KLineMessage *pTx;
-  KLineMessage *pRx;
+  bool ok;
   KLineAuth pak;
   KLineAuth cem;
 
@@ -63,9 +63,9 @@ static void wakeupTest() {
 
   // Allocate and send a message, which will FAIL as no challenge yet.
   pTx = KLineAllocAuthenticatedMessage( &pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  pRx = KLineAuthenticateMessage( &cem, &pTx, NULL);
-  ASSERT(NULL == pRx);
-  if (pRx) { KLineFreeMessage(pRx); }
+  ok = KLineAuthenticateMessage( &cem, pTx, NULL);
+  KLineFreeMessage(pTx);
+  ASSERT(false == ok);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
@@ -80,9 +80,9 @@ static void wakeupTest() {
 
   // Allocate and send a message, which will be OK as now there is a session
   pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  pRx = KLineAuthenticateMessage(&cem, &pTx, NULL);
-  ASSERT(NULL != pRx);
-  if (pRx) { KLineFreeMessage(pRx); }
+  ok = KLineAuthenticateMessage(&cem, pTx, NULL);
+  ASSERT(ok);
+  KLineFreeMessage(pTx);
   
 }
 
@@ -90,7 +90,7 @@ static void wakeupTest() {
 static void wakeupTest1() {
   const char signedMsg[] = "signed";
   KLineMessage *pTx;
-  KLineMessage *pRx;
+  bool ok;
   KLineAuth pak;
   KLineAuth cem;
 
@@ -120,9 +120,9 @@ static void wakeupTest1() {
 
   // Allocate and send a message, which will FAIL as no challenge yet.
   pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  pRx = KLineAuthenticateMessage(&cem, &pTx, NULL);
-  ASSERT(NULL == pRx);
-  if (pRx) { KLineFreeMessage(pRx); }
+  ok = KLineAuthenticateMessage(&cem, pTx, NULL);
+  ASSERT(!ok);
+  KLineFreeMessage(pTx);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
@@ -137,16 +137,16 @@ static void wakeupTest1() {
 
   // Allocate and send a message, which will be OK as now there is a session
   pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  pRx = KLineAuthenticateMessage(&cem, &pTx, NULL);
-  ASSERT(NULL != pRx);
-  if (pRx) { KLineFreeMessage(pRx); }
+  ok = KLineAuthenticateMessage(&cem, pTx, NULL);
+  ASSERT(ok);
+  KLineFreeMessage(pTx);
 
 }
 
 
 static void authTest0() {
   const KLineAuthMessage *pSigned;
-
+  bool ok;
   KLineMessage *pM;
   pM = KLineAllocMessage(0x12, 0x05, 0, nullptr);
   KLineFreeMessage(pM);
@@ -179,7 +179,7 @@ static void authTest0() {
 
     pSigned = NULL;
 
-    pM = KLineAuthenticateMessage(&pak, &pM, &pSigned);
+    ok = KLineAuthenticateMessage(&pak, pM, &pSigned);
 
     ASSERT(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
     ASSERT(0 == memcmp(pSigned->sdata.u.sdata.spayload, signedMsg, sizeof(signedMsg)));
@@ -196,7 +196,8 @@ static void authTest0() {
       signedMsg, sizeof(signedMsg));
 
     pSigned = NULL;
-    pM = KLineAuthenticateMessage(&pak,&pM,&pSigned);
+    ok = KLineAuthenticateMessage(&pak, pM, &pSigned);
+    ASSERT(ok);
 
     ASSERT(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
     ASSERT(0 == memcmp(pSigned->sdata.u.sdata.spayload, signedMsg, sizeof(signedMsg)));
@@ -219,7 +220,8 @@ static void authTest0() {
       signedMsg, sizeof(signedMsg));
 
     pSigned = NULL;
-    pM = KLineAuthenticateMessage( &pak,&pM,&pSigned);
+    ok = KLineAuthenticateMessage( &pak,pM,&pSigned);
+    ASSERT(ok);
 
     ASSERT(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
     ASSERT(0 == memcmp(pSigned->sdata.u.sdata.spayload, signedMsg, sizeof(signedMsg)));

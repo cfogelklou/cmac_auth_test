@@ -331,15 +331,13 @@ KLineMessage *KLineAllocAuthenticatedMessage(
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-KLineMessage *KLineAuthenticateMessage(
+bool KLineAuthenticateMessage(
   KLineAuth * const pThis,
-  KLineMessage ** ppMsgIn,
+  const KLineMessage * const pMsgIn,
   const KLineAuthMessage **ppSigned ///< outputs the signed part of the incoming data    
 ) {
-  ASSERT(ppMsgIn);
-  KLineMessage * pMsgIn = *ppMsgIn;
+  bool rval = false;
   ASSERT(pMsgIn);
-  KLineMessage *pMsgOut = NULL;
   if (0 == KLineCheckCs(pMsgIn)) {
     const size_t totalPacketSize = getPacketSize(pMsgIn);
 
@@ -347,17 +345,13 @@ KLineMessage *KLineAuthenticateMessage(
     if (pMsgIn->u.aead.hdr.txcnt > pThis->authRx.nonce.noncePlusChallenge.tx_cnt) {
 
       pThis->authRx.nonce.noncePlusChallenge.tx_cnt = pMsgIn->u.aead.hdr.txcnt;
-      pMsgOut = Malloc(totalPacketSize);
-
-      // Make a copy of the encrypted packet, which we will overwrite.
-      memcpy(pMsgOut, pMsgIn, totalPacketSize);
 
       const size_t sPayloadBytes = pMsgIn->u.aead.hdr.sdata_len - 1; // spayload
 
       const uint8_t * const tag = &pMsgIn->u.aead.sdata.u.sdata.spayload[sPayloadBytes];
 
       uint8_t tagTmp[8] = { 0 };
-      int stat = cmacTag(&pThis->authRx, &pMsgOut->u.aead, tagTmp);
+      int stat = cmacTag(&pThis->authRx, &pMsgIn->u.aead, tagTmp);
       ASSERT(0 == stat);
       if (0 == stat) {
         stat = memcmp(tag, tagTmp, 8);
@@ -366,20 +360,15 @@ KLineMessage *KLineAuthenticateMessage(
 
       // Output variables
       if (0 == stat) {
+        rval = true;
         if ((sPayloadBytes > 0) && (ppSigned)) {
-          *ppSigned = &pMsgOut->u.aead;
+          *ppSigned = &pMsgIn->u.aead;
         }
-      }
-      else {
-        memset(pMsgOut, 0, totalPacketSize);
-        KLineFreeMessage(pMsgOut);
-        pMsgOut = NULL;
       }
     }
   }
-  Free(pMsgIn);
-  *ppMsgIn = NULL;
-  return pMsgOut;
+
+  return rval;
 }
 
 // Gets the current TXCNT (next message)

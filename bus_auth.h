@@ -202,12 +202,10 @@ extern "C" {
     const size_t payloadSizeSigned // Size of signed data
   );
 
-  // Frees and decrypts pEncryptedMsg, and allocates a new message to hold the
-  // decrypted version.
-  // Returns non-null message if decryption is successfull.
-  KLineMessage *KLineAuthenticateMessage(
+  // Returns true if authenticated.
+  bool KLineAuthenticateMessage(
     KLineAuth * const pThis,
-    KLineMessage ** ppMsg, ///< Incoming message, will be freed here, therefore it is a ptr-ptr.
+    const KLineMessage * const pMsg, ///< Incoming message, will be freed here, therefore it is a ptr-ptr.
     const KLineAuthMessage **ppSigned ///< outputs the signed part of the incoming data    
   );
 
