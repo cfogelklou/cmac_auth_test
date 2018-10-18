@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(kline_auth)
+project(bus_auth)
 
 set(CMAKE_CXX_STANDARD 11)
 
@@ -31,7 +31,6 @@ file(GLOB MBEDTLS_SRC
   mbedtls/library/cipher.c
   mbedtls/library/cipher_wrap.c
   mbedtls/library/aes.c
-  # mbedtls/library/platform.c
   mbedtls/library/platform_util.c
   mbedtls/library/cmac.c
 )
@@ -48,5 +47,5 @@ include_directories(
   mbedtls/include/mbedtls
 )
 
-add_executable(kline_ccm ${APP_SOURCE_FILES})
+add_executable(bus_auth ${APP_SOURCE_FILES})
 
