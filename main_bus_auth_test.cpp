@@ -121,10 +121,10 @@ static void wakeupTest1() {
   KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120);
   KLineFreeMessage(pTx);
 
-  // Set txcnt to NULL as this should cause first authentication to fail.
+  // Set txcnt to 0 as this should cause first authentication to fail.
   KLineAuthSetTxCnt(&pak, 0);
 
-  // Allocate and send a message, which will FAIL as no challenge yet.
+  // Allocate and send a message, which will FAIL as txcnt is zero on the sent message.
   pTx = KLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
   ok = KLineAuthenticateMessage(&cem, pTx, NULL);
   ASSERT(!ok);
