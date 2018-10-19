@@ -297,17 +297,26 @@ static int cmacTag(
   ASSERT(0 == stat);
 
   // CMAC over NONCE
-  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pAuth->nonce.entireNonce.byteArray, sizeof(pAuth->nonce.entireNonce.byteArray));
+  stat = mbedtls_cipher_cmac_update(
+    &pAuth->cmac, 
+    pAuth->nonce.entireNonce.byteArray, 
+    sizeof(pAuth->nonce.entireNonce.byteArray));
   ASSERT(0 == stat);
 
-  // CMAC over sCMD and payload (== sDataSize)
-  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pMsg->sdata.u.rawBytes, pMsg->hdr.sdata_len);
+  // CMAC over sCMD and payload
+  stat = mbedtls_cipher_cmac_update(
+    &pAuth->cmac, 
+    pMsg->sdata.u.rawBytes, 
+    pMsg->hdr.sdata_len);
   ASSERT(0 == stat);
 
+  // Calculate signature.
   uint8_t tagTmp[16 + 1] = { 0 }; // plus one sentry byte
   stat = mbedtls_cipher_cmac_finish(&pAuth->cmac, tagTmp);
   ASSERT(0 == stat);
   ASSERT(0 == tagTmp[sizeof(tagTmp) - 1]);
+
+  // Use only 8 bytes of signature.
   memcpy(tag, tagTmp, SIGNATURE_BYTES);
 
   return stat;
@@ -335,17 +344,17 @@ KLineMessage *KLineCreateAuthenticatedMessage(
   ASSERT(pM);
 
   // Set up headers and scmd
-  pM->u.aead.hdr.txcnt = pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
-  pM->u.aead.hdr.sdata_len = (uint8_t)SDATA_LEN; 
-  pM->u.aead.sdata.u.sdata.scmd = scmd;
+  pM->u.auth.hdr.txcnt = pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
+  pM->u.auth.hdr.sdata_len = (uint8_t)SDATA_LEN; 
+  pM->u.auth.sdata.u.sdata.scmd = scmd;
 
   // Copy the signed payload
-  memcpy(pM->u.aead.sdata.u.sdata.spayload, sPayloadPtr, sPayloadBytes);
+  memcpy(pM->u.auth.sdata.u.sdata.spayload, sPayloadPtr, sPayloadBytes);
 
   // Get pointer to ciphertext out and the signature out
-  uint8_t * const tag = &pM->u.aead.sdata.u.sdata.spayload[sPayloadBytes];
+  uint8_t * const tag = &pM->u.auth.sdata.u.sdata.spayload[sPayloadBytes];
   
-  const int stat = cmacTag(&pThis->authTx, &pM->u.aead, tag);
+  const int stat = cmacTag(&pThis->authTx, &pM->u.auth, tag);
   ASSERT(0 == stat);
 
   KLineAddCs(pM);
@@ -369,16 +378,16 @@ bool KLineAuthenticateMessage(
     const size_t totalPacketSize = getPacketSize(pMsgIn);
 
     // Check that received message is after last received message.
-    if (pMsgIn->u.aead.hdr.txcnt > pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt) {
+    if (pMsgIn->u.auth.hdr.txcnt > pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt) {
 
-      pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = pMsgIn->u.aead.hdr.txcnt;
+      pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = pMsgIn->u.auth.hdr.txcnt;
 
-      const size_t sPayloadBytes = pMsgIn->u.aead.hdr.sdata_len - 1; // spayload
+      const size_t sPayloadBytes = pMsgIn->u.auth.hdr.sdata_len - 1; // spayload
 
-      const uint8_t * const tag = &pMsgIn->u.aead.sdata.u.sdata.spayload[sPayloadBytes];
+      const uint8_t * const tag = &pMsgIn->u.auth.sdata.u.sdata.spayload[sPayloadBytes];
 
       uint8_t tagTmp[SIGNATURE_BYTES] = { 0 };
-      int stat = cmacTag(&pThis->authRx, &pMsgIn->u.aead, tagTmp);
+      int stat = cmacTag(&pThis->authRx, &pMsgIn->u.auth, tagTmp);
       ASSERT(0 == stat);
       if (0 == stat) {
         stat = memcmp(tag, tagTmp, SIGNATURE_BYTES);
@@ -389,7 +398,7 @@ bool KLineAuthenticateMessage(
       if (0 == stat) {
         rval = true;
         if ((sPayloadBytes > 0) && (ppSigned)) {
-          *ppSigned = &pMsgIn->u.aead;
+          *ppSigned = &pMsgIn->u.auth;
         }
       }
     }

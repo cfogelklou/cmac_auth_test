@@ -83,7 +83,7 @@ typedef struct PACKED KLineMessageTag {
   union {
     KLinePairing    pairing;
     KLineChallenge  challenge;
-    KLineAuthMessage aead;
+    KLineAuthMessage auth;
     uint8_t          payload[1];
   }u;
 
