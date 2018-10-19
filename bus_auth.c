@@ -29,6 +29,10 @@ static void AssertionWarningFailed(const char * const f, const int line) {
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
 #endif
 
+#ifndef MAX
+#define MAX(x,y) (((x) > (y)) ? (x) : (y))
+#endif
+
 // ////////////////////////////////////////////////////////////////////////////
 void *Malloc(const size_t sz) {
   void *p = malloc(sz);
@@ -62,11 +66,11 @@ static size_t getPacketSize(const KLineMessage * const pM) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-static KLineMessageFtr *getFtr(KLineMessage * const pM) {
+static const KLineMessageFtr *getFtr(const KLineMessage * const pM) {
   const size_t len = getPacketSize(pM);
-  uint8_t *p0 = &pM->hdr.addr;
-  uint8_t *pFtr = &p0[len - 1];
-  return (KLineMessageFtr *)pFtr;
+  const uint8_t *p0 = &pM->hdr.addr;
+  const uint8_t *pFtr = &p0[len - 1];
+  return (const KLineMessageFtr *)pFtr;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -79,7 +83,7 @@ static void defaultrandombytesFn(void *p, uint8_t *pBuf, size_t bufLen) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-int KLineCheckCs(KLineMessage * const pM) {
+int KLineCheckCs(const KLineMessage * const pM) {
   const uint8_t cs0 = calcCs(&pM->hdr.addr, getPacketSize(pM) - 1);
   const KLineMessageFtr * pFtr = getFtr(pM);
   return pFtr->cs - cs0;
@@ -88,7 +92,7 @@ int KLineCheckCs(KLineMessage * const pM) {
 // ////////////////////////////////////////////////////////////////////////////
 uint8_t KLineAddCs(KLineMessage *const pM) {
   const size_t pktSize = getPacketSize(pM);
-  KLineMessageFtr *pFtr = getFtr(pM);
+  KLineMessageFtr *pFtr = (KLineMessageFtr *)getFtr(pM);
   pFtr->cs = calcCs(&pM->hdr.addr, pktSize-1);
   return pFtr->cs;
 }
@@ -187,9 +191,9 @@ void KLineAuthInit(
   KLineInitKey(&pThis->authRx, key);
   defaultrandombytesFn(NULL, key, 16);
   KLineInitKey(&pThis->authTx, key);
-  defaultrandombytesFn(NULL, pThis->authTx.nonce.iv.iv, sizeof(&pThis->authTx.nonce.iv.iv));
-  defaultrandombytesFn(NULL, pThis->authRx.nonce.iv.iv, sizeof(&pThis->authRx.nonce.iv.iv));
-  pThis->authRx.nonce.noncePlusChallenge.tx_cnt = 255;
+  defaultrandombytesFn(NULL, pThis->authTx.nonce.entireNonce.byteArray, sizeof(&pThis->authTx.nonce.entireNonce.byteArray));
+  defaultrandombytesFn(NULL, pThis->authRx.nonce.entireNonce.byteArray, sizeof(&pThis->authRx.nonce.entireNonce.byteArray));
+  pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = 255;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -209,37 +213,57 @@ void KLineAuthPairCEM(
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-void KLineAuthChallenge(
-  KLineAuth * const pThis,
-  const KLineChallenge *txChallenge,
-  const KLineChallenge *rxChallenge
-) {
-  if (txChallenge) {
-    // Next sent message will use nonce of 0
-    pThis->authTx.nonce.noncePlusChallenge.tx_cnt = 1;
-    memcpy(&pThis->authTx.nonce.noncePlusChallenge.challenge.challenge120, txChallenge, sizeof(KLineChallenge));
-  }
-
-  if (rxChallenge) {
-    // Receiver believes its last received message is 0.
-    pThis->authRx.nonce.noncePlusChallenge.tx_cnt = 0;
-    memcpy(&pThis->authRx.nonce.noncePlusChallenge.challenge.challenge120, rxChallenge, sizeof(KLineChallenge));
-  }
-}
-
-// ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreateChallenge(
   const uint8_t addr,
   const uint8_t func,
   RandombytesFnPtr randFn,
-  void *randFnData
+  void *randFnData,
+  const size_t challengeLenBits
 )
 {
+  KLineChallenge challenge = { 0 };
+
+  ASSERT(0 == challengeLenBits % 8);
+  const size_t challengeLen = (challengeLenBits >= 32) ? challengeLenBits / 8 : 120 / 8;
+  const size_t cpyBytes = MIN(challengeLen, sizeof(challenge.challenge120));
+  ASSERT(cpyBytes >= 4);
+
   RandombytesFnPtr rndFn = (randFn) ? randFn : defaultrandombytesFn;
-  KLineChallenge challenge;
-  rndFn(randFnData, challenge.challenge120, sizeof(challenge.challenge120));
-  return KLineAllocMessage(addr, func, sizeof(challenge), &challenge);
+  rndFn(randFnData, challenge.challenge120, cpyBytes);
+  return KLineAllocMessage(addr, func, cpyBytes, &challenge);
 }
+
+// ////////////////////////////////////////////////////////////////////////////
+void KLineAuthChallenge(
+  KLineAuth * const pThis,
+  const KLineChallenge *txChallenge,
+  const KLineChallenge *rxChallenge,
+  const size_t challengeLenBits
+) {
+  ASSERT(0 == challengeLenBits % 8);
+  const size_t challengeLen = (challengeLenBits >= 32) ? challengeLenBits / 8 : 120 / 8;
+  const size_t cpyBytes = MIN(challengeLen, sizeof(txChallenge->challenge120));
+  ASSERT(cpyBytes >= 4);
+
+  // Zeroes at end of challenge if less than 120 bits are used.
+  const size_t padBytes = sizeof(txChallenge->challenge120) - cpyBytes;
+
+  if (txChallenge) {
+    // Next sent message will use nonce of 0
+    pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt = 1;
+    memcpy(&pThis->authTx.nonce.txNoncePlusChallenge.challenge.challenge120[0], txChallenge, cpyBytes);
+    memset(&pThis->authTx.nonce.txNoncePlusChallenge.challenge.challenge120[cpyBytes], 0, padBytes);
+  }
+
+  if (rxChallenge) {
+    // Receiver believes its last received message is 0.
+    pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = 0;
+    memcpy(&pThis->authRx.nonce.rxNoncePlusChallenge.challenge.challenge120[0], rxChallenge, cpyBytes);
+    memset(&pThis->authRx.nonce.rxNoncePlusChallenge.challenge.challenge120[cpyBytes], 0, padBytes);
+  }
+}
+
+
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreatePairing(
@@ -258,24 +282,20 @@ KLineMessage *KLineCreatePairing(
 
 // ////////////////////////////////////////////////////////////////////////////
 static int cmacTag(
-  KLineAuthTxRx *pAuth,
-  KLineAuthMessage *pMsg,
+  KLineAuthTxRx * const pAuth,
+  const KLineAuthMessage * const pMsg,
   uint8_t tag[8]
   ) {
 
   int stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   ASSERT(0 == stat);
 
-  const size_t sDataSize = pMsg->hdr.sdata_len;
-
   // CMAC over NONCE
-  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pAuth->nonce.iv.iv, sizeof(pAuth->nonce.iv.iv));  
+  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pAuth->nonce.entireNonce.byteArray, sizeof(pAuth->nonce.entireNonce.byteArray));
   ASSERT(0 == stat);
 
-  ASSERT(sDataSize >= 1); // As sdata includes scmd, sDataSize should ALWAYS be >= 1.
-
   // CMAC over sCMD and payload (== sDataSize)
-  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pMsg->sdata.u.rawBytes, sDataSize);
+  stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pMsg->sdata.u.rawBytes, pMsg->hdr.sdata_len);
   ASSERT(0 == stat);
 
   uint8_t tagTmp[16 + 1] = { 0 };
@@ -292,7 +312,7 @@ static int cmacTag(
   (sizeof(KLineAuthMessageHdr) + 1 + (spayloadbytes) + 8)
 
 // ////////////////////////////////////////////////////////////////////////////
-KLineMessage *KLineAllocAuthenticatedMessage(
+KLineMessage *KLineCreateAuthenticatedMessage(
   KLineAuth * const pThis,
   const uint8_t addr,
   const uint8_t func,
@@ -308,7 +328,7 @@ KLineMessage *KLineAllocAuthenticatedMessage(
   KLineMessage * const pM = KLineAllocMessage(addr, func, AUTH_SCMD_PAYLOAD_SZ, NULL);
 
   // Set up headers and scmd
-  pM->u.aead.hdr.txcnt = pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
+  pM->u.aead.hdr.txcnt = pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
   pM->u.aead.hdr.sdata_len = (uint8_t)SDATA_LEN; 
   pM->u.aead.sdata.u.sdata.scmd = scmd;
 
@@ -324,8 +344,8 @@ KLineMessage *KLineAllocAuthenticatedMessage(
   KLineAddCs(pM);
   ASSERT(0 == KLineCheckCs(pM));
 
-  ++pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
-  ASSERT(0 != pThis->authTx.nonce.noncePlusChallenge.tx_cnt);
+  ++pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
+  ASSERT(0 != pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt);
   
   return pM;
 }
@@ -342,9 +362,9 @@ bool KLineAuthenticateMessage(
     const size_t totalPacketSize = getPacketSize(pMsgIn);
 
     // Check that received message is after last received message.
-    if (pMsgIn->u.aead.hdr.txcnt > pThis->authRx.nonce.noncePlusChallenge.tx_cnt) {
+    if (pMsgIn->u.aead.hdr.txcnt > pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt) {
 
-      pThis->authRx.nonce.noncePlusChallenge.tx_cnt = pMsgIn->u.aead.hdr.txcnt;
+      pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = pMsgIn->u.aead.hdr.txcnt;
 
       const size_t sPayloadBytes = pMsgIn->u.aead.hdr.sdata_len - 1; // spayload
 
@@ -375,20 +395,20 @@ bool KLineAuthenticateMessage(
 uint8_t KLineAuthGetTxCnt(
   KLineAuth * const pThis
 ) {
-  return pThis->authTx.nonce.noncePlusChallenge.tx_cnt;
+  return pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
 }
 
 // Gets the current RXCNT (last received message.)
 uint8_t KLineAuthGetRxCnt(
   KLineAuth * const pThis
 ) {
-  return pThis->authRx.nonce.noncePlusChallenge.tx_cnt;
+  return pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt;
 }
 
 void KLineAuthSetTxCnt(
   KLineAuth * const pThis,
   const uint8_t txcnt
 ) {
-  pThis->authTx.nonce.noncePlusChallenge.tx_cnt = txcnt;
+  pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt = txcnt;
 }
 

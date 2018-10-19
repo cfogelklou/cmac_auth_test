@@ -103,7 +103,7 @@ extern "C" {
   void KLineFreeMessage(KLineMessage *pM);
 
   // Checks the CS on a message
-  int KLineCheckCs(KLineMessage * const pM);
+  int KLineCheckCs(const KLineMessage * const pM);
 
   // Adds the CS to a message.
   uint8_t KLineAddCs(KLineMessage * const pM);
@@ -111,19 +111,34 @@ extern "C" {
   typedef struct KLineAuthTxRxTag {
     mbedtls_cipher_context_t cmac;
     union {
+
+      // Abstraction showing rx count first, 
+      // followed by 120-bit challenge
+      struct {
+        uint8_t rx_cnt;
+        KLineChallenge challenge;
+      } rxNoncePlusChallenge;
+
+      // Abstraction showing tx count first, 
+      // followed by 120-bit challenge
       struct {
         uint8_t tx_cnt;
         KLineChallenge challenge;
-      } noncePlusChallenge;
+      } txNoncePlusChallenge;
+
+      // Abstraction mapping tx_cnt || challenge.
       struct {
-        uint8_t iv[16];
-      }iv;
+        uint8_t byteArray[16];
+      } entireNonce;
+
     } nonce;
   } KLineAuthTxRx;
 
   // Object which handles transmission and reception of authenticated messages.
   typedef struct KLineAuthTag {
+    // Transmitter
     KLineAuthTxRx authTx;
+    // Receiver
     KLineAuthTxRx authRx;
   }  KLineAuth;
 
@@ -162,26 +177,32 @@ extern "C" {
     KLineAuth * const pThis
   );
 
-  // Receives a 120-bit challenge
-  void KLineAuthChallenge(
-    KLineAuth * const pThis,
-    /// txChallenge: Sets the 120-bit challenge set by the remote device, 
-    // allowing ourselves to authenticate
-    const KLineChallenge *txChallenge,
-
-    /// rxChallenge: Sets the challenge set locally, allowing the remote to authenticate.
-    const KLineChallenge *rxChallenge
-  );
-
   // Optional callback to allow generation of random data.
-  typedef void (*RandombytesFnPtr)(void *p, uint8_t *pBuf, size_t bufLen);
+  typedef void(*RandombytesFnPtr)(void *p, uint8_t *pBuf, size_t bufLen);
 
   // Create a challenge message.
   KLineMessage *KLineCreateChallenge(
     const uint8_t addr,
     const uint8_t func,
     RandombytesFnPtr randFn,
-    void *randFnData
+    void *randFnData,
+    // Set to >= 32 and < 120 to set number of challenge bits to < 120
+    const size_t challengeLenBits
+  );
+
+  // Receives a 120-bit challenge
+  void KLineAuthChallenge(
+    KLineAuth * const pThis,
+
+    /// txChallenge: Sets the 120-bit challenge set by the remote device, 
+    // allowing ourselves to authenticate
+    const KLineChallenge *txChallenge,
+
+    /// rxChallenge: Sets the challenge set locally, allowing the remote to authenticate.
+    const KLineChallenge *rxChallenge,
+
+    // Set to >= 32 and < 120 to set number of challenge bits to < 120
+    const size_t challengeLenBits
   );
 
   // Create a pairing message.
@@ -193,20 +214,25 @@ extern "C" {
   );
 
   // Allocate an encrypted message.
-  KLineMessage *KLineAllocAuthenticatedMessage(
+  KLineMessage *KLineCreateAuthenticatedMessage(
     KLineAuth * const pThis,
     const uint8_t addr,
     const uint8_t func,
+    // Signed command.
     const uint8_t scmd,
-    const void *pPayloadSigned, // Signed data
-    const size_t payloadSizeSigned // Size of signed data
+    // Signed payload buffer.
+    const void *pSPayload, 
+    // Size of signed payload buffer.
+    const size_t szSPayload 
   );
 
   // Returns true if authenticated.
   bool KLineAuthenticateMessage(
     KLineAuth * const pThis,
-    const KLineMessage * const pMsg, ///< Incoming message, will be freed here, therefore it is a ptr-ptr.
-    const KLineAuthMessage **ppSigned ///< outputs the signed part of the incoming data    
+    /// Incoming message.
+    const KLineMessage * const pMsg, 
+    /// Outputs the signed part of the incoming data    
+    const KLineAuthMessage **ppSigned 
   );
 
 #ifdef __cplusplus

@@ -7,26 +7,31 @@
 
 using namespace std;
 
+// ////////////////////////////////////////////////////////////////////////////
 #define ASSERT(var) \
   do { \
     if (!(var)){AssertionFailed(__FILE__, __LINE__);} \
   } while(0) \
 
+// ////////////////////////////////////////////////////////////////////////////
 #define ASSERT_WARN(var) \
   do { \
     if (!(var)){AssertionWarningFailed(__FILE__, __LINE__);} \
   } while(0) \
 
+// ////////////////////////////////////////////////////////////////////////////
 static void AssertionFailed(const char * const f, const int line) {
   printf("Assertion Failed: %s(%d)\r\n", f, line);
   exit(-1);
 }
 
+// ////////////////////////////////////////////////////////////////////////////
 static void AssertionWarningFailed(const char * const f, const int line) {
   printf("Warning triggered at %s(%d)\r\n", f, line);
 }
 
-
+// ////////////////////////////////////////////////////////////////////////////
+// Replace with something cryptographically secure in a real implementation.
 static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
   (void)p;
   for (size_t i = 0; i < bufLen; i++) {
@@ -34,6 +39,7 @@ static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
   }
 }
 
+// ////////////////////////////////////////////////////////////////////////////
 // Test case for first message from PAK to CEM after sleep.
 static void wakeupTest() {
   const char signedMsg[] = "signed";
@@ -62,16 +68,16 @@ static void wakeupTest() {
   ASSERT_WARN(KLineAuthGetTxCnt(&pak) != KLineAuthGetRxCnt(&cem));
 
   // Allocate and send a message, which will FAIL as no challenge yet.
-  pTx = KLineAllocAuthenticatedMessage( &pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  pTx = KLineCreateAuthenticatedMessage( &pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
   ok = KLineAuthenticateMessage( &cem, pTx, NULL);
   KLineFreeMessage(pTx);
   ASSERT(false == ok);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
-  pTx = KLineCreateChallenge(0, 0, randombytes, NULL);
-  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge);
-  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge);
+  pTx = KLineCreateChallenge(0, 64/8, 0, randombytes, NULL);
+  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120);
+  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120);
   KLineFreeMessage(pTx);
 
   // RX Counter (last message received) set to 1, TXCNT set to 1
@@ -79,7 +85,7 @@ static void wakeupTest() {
   ASSERT_WARN(0 == KLineAuthGetRxCnt(&cem));
 
   // Allocate and send a message, which will be OK as now there is a session
-  pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  pTx = KLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
   ok = KLineAuthenticateMessage(&cem, pTx, NULL);
   ASSERT(ok);
   KLineFreeMessage(pTx);
@@ -110,25 +116,25 @@ static void wakeupTest1() {
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
-  pTx = KLineCreateChallenge(0, 0, randombytes, NULL);
-  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge);
-  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge);
+  pTx = KLineCreateChallenge(0, 0, randombytes, NULL, 120);
+  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120);
+  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120);
   KLineFreeMessage(pTx);
 
   // Set txcnt to NULL as this should cause first authentication to fail.
   KLineAuthSetTxCnt(&pak, 0);
 
   // Allocate and send a message, which will FAIL as no challenge yet.
-  pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  pTx = KLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
   ok = KLineAuthenticateMessage(&cem, pTx, NULL);
   ASSERT(!ok);
   KLineFreeMessage(pTx);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
-  pTx = KLineCreateChallenge(0, 0, randombytes, NULL);
-  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge);
-  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge);
+  pTx = KLineCreateChallenge(0, 0, randombytes, NULL, 120);
+  KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120);
+  KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120);
   KLineFreeMessage(pTx);
 
   // RX Counter (last message received) set to 1, TXCNT set to 1
@@ -136,15 +142,15 @@ static void wakeupTest1() {
   ASSERT_WARN(0 == KLineAuthGetRxCnt(&cem));
 
   // Allocate and send a message, which will be OK as now there is a session
-  pTx = KLineAllocAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  pTx = KLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
   ok = KLineAuthenticateMessage(&cem, pTx, NULL);
   ASSERT(ok);
   KLineFreeMessage(pTx);
 
 }
 
-
-static void authTest0() {
+// ////////////////////////////////////////////////////////////////////////////
+static void authTest0(const size_t challengeBits) {
   const KLineAuthMessage *pSigned;
   bool ok;
   KLineMessage *pM;
@@ -164,36 +170,16 @@ static void authTest0() {
   KLineFreeMessage(pM);
 
   // Generate a challenge, apply the CEM and PAK.
-  pM = KLineCreateChallenge(0, 0, randombytes, NULL);
-  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
-  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
+  pM = KLineCreateChallenge(0, 0, randombytes, NULL, challengeBits);
+  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge, challengeBits);
+  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, challengeBits);
   KLineFreeMessage(pM);
-
-  // First test, signed message only.
-  {
-    const char signedMsg[] = "signed";
-    
-    pM = KLineAllocAuthenticatedMessage(
-      &cem, 0x12, 0x05, 0x02,
-      signedMsg, sizeof(signedMsg));
-
-    pSigned = NULL;
-
-    ok = KLineAuthenticateMessage(&pak, pM, &pSigned);
-
-    ASSERT(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
-    ASSERT(0 == memcmp(pSigned->sdata.u.sdata.spayload, signedMsg, sizeof(signedMsg)));
-
-    KLineFreeMessage(pM);
-  }
 
   // Don't let txcnt roll over (which it will if i >= 255)
   for (int i = 0; i < 200; i++) {
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
 
-    pM = KLineAllocAuthenticatedMessage(
-      &cem, 0x12, 0x05, 0x02,
-      signedMsg, sizeof(signedMsg));
+    pM = KLineCreateAuthenticatedMessage(&cem, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
 
     pSigned = NULL;
     ok = KLineAuthenticateMessage(&pak, pM, &pSigned);
@@ -206,16 +192,16 @@ static void authTest0() {
   }
 
   // Generate new challenge to reset txcnt to 1.
-  pM = KLineCreateChallenge(0, 0, randombytes, NULL);
-  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge);
-  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge);
+  pM = KLineCreateChallenge(0, 0, randombytes, NULL, challengeBits);
+  KLineAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge, challengeBits);
+  KLineAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, challengeBits);
   KLineFreeMessage(pM);
 
   // signed and encrypted messages... However, don't let txcnt roll over (which it will if i >= 255)
   for (int i = 0; i < 200; i++) {
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
 
-    pM = KLineAllocAuthenticatedMessage(
+    pM = KLineCreateAuthenticatedMessage(
       &cem, 0x12, 0x05, 0x02,
       signedMsg, sizeof(signedMsg));
 
@@ -233,12 +219,17 @@ static void authTest0() {
   KLineAuthDestruct(&cem);
 }
 
-
+// ////////////////////////////////////////////////////////////////////////////
 int main(char **c, int v) {
 
-  authTest0();
+  authTest0(120);
   wakeupTest();
   wakeupTest1();
+
+  // Test with challenges of less than 120 bits (to save bandwidth)
+  for (size_t challengeBits = 64; challengeBits < 120; challengeBits+=8) {
+    authTest0(challengeBits);
+  }
 
   return 0;
 }
