@@ -1,7 +1,6 @@
 
 #include "bus_auth.h"
 
-
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h> // for NULL
@@ -57,7 +56,7 @@ static uint8_t calcCs(const uint8_t *data, const size_t length) {
 
 // ////////////////////////////////////////////////////////////////////////////
 // Get the size of the whole packet, given the size of the "data" part
-#define KPKT_SIZE(payloadSize) \
+#define PACKET_SIZE(payloadSize) \
   sizeof(KLineMessageHdr) + (payloadSize) + sizeof(KLineMessageFtr)
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -104,8 +103,8 @@ KLineMessage *KLineAllocMessage(
   const size_t payloadSize, 
   void *pPayloadCanBeNull) 
 {
-  const size_t sz = KPKT_SIZE(payloadSize);
-  KLineMessage *pM = Malloc(sz);
+  const size_t sz = PACKET_SIZE(payloadSize);
+  KLineMessage * const pM = Malloc(sz);
   memset(pM, 0, sz);
   pM->hdr.addr = addr;
   pM->hdr.function = func;
@@ -138,7 +137,6 @@ static void KLineInitKey(
   )
 {
 
-  uint8_t tmp[16];
   const mbedtls_cipher_info_t * const pCInfo = 
     mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
   ASSERT(NULL != pCInfo);
@@ -147,12 +145,14 @@ static void KLineInitKey(
   int stat = mbedtls_cipher_setup(&pAuth->cmac, pCInfo);
   ASSERT(0 == stat);
 
-  stat = mbedtls_cipher_cmac_starts(&pAuth->cmac, pKey, 16 * 8);
+  stat = mbedtls_cipher_cmac_starts(&pAuth->cmac, pKey, SK_BYTES * 8);
   ASSERT(0 == stat);
 
   // Finish and reset, so can be started again without referring to key.
+  uint8_t tmp[16 + 1] = { 0 }; // plus one senty byte
   stat = mbedtls_cipher_cmac_finish(&pAuth->cmac, tmp);
   ASSERT(0 == stat);
+  ASSERT(0 == tmp[16]);
   stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
   ASSERT(0 == stat);
 
@@ -187,12 +187,18 @@ void KLineAuthInit(
 {
   uint8_t key[16];
   memset(pThis, 0, sizeof(KLineAuth));
-  defaultrandombytesFn(NULL, key, 16);
+  
+  // Randomize the keys.
+  defaultrandombytesFn(NULL, key, SK_BYTES);
   KLineInitKey(&pThis->authRx, key);
-  defaultrandombytesFn(NULL, key, 16);
+  defaultrandombytesFn(NULL, key, SK_BYTES);
   KLineInitKey(&pThis->authTx, key);
+
+  // Randomize the tx and rx nonces
   defaultrandombytesFn(NULL, pThis->authTx.nonce.entireNonce.byteArray, sizeof(&pThis->authTx.nonce.entireNonce.byteArray));
   defaultrandombytesFn(NULL, pThis->authRx.nonce.entireNonce.byteArray, sizeof(&pThis->authRx.nonce.entireNonce.byteArray));
+  
+  // Set rxcnt to 255, next message will fail.
   pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = 255;
 }
 
@@ -284,7 +290,7 @@ KLineMessage *KLineCreatePairing(
 static int cmacTag(
   KLineAuthTxRx * const pAuth,
   const KLineAuthMessage * const pMsg,
-  uint8_t tag[8]
+  uint8_t tag[SIGNATURE_BYTES]
   ) {
 
   int stat = mbedtls_cipher_cmac_reset(&pAuth->cmac);
@@ -298,18 +304,18 @@ static int cmacTag(
   stat = mbedtls_cipher_cmac_update(&pAuth->cmac, pMsg->sdata.u.rawBytes, pMsg->hdr.sdata_len);
   ASSERT(0 == stat);
 
-  uint8_t tagTmp[16 + 1] = { 0 };
+  uint8_t tagTmp[16 + 1] = { 0 }; // plus one sentry byte
   stat = mbedtls_cipher_cmac_finish(&pAuth->cmac, tagTmp);
   ASSERT(0 == stat);
   ASSERT(0 == tagTmp[sizeof(tagTmp) - 1]);
-  memcpy(tag, tagTmp, 8);
+  memcpy(tag, tagTmp, SIGNATURE_BYTES);
 
   return stat;
 }
 
 
 #define AUTH_SCMD_KLINE_PAYLOAD_SZ(spayloadbytes) \
-  (sizeof(KLineAuthMessageHdr) + 1 + (spayloadbytes) + 8)
+  (sizeof(KLineAuthMessageHdr) + 1 + (spayloadbytes) + SIGNATURE_BYTES) // txcnt + sdata_len + scmd + spayload + tag
 
 // ////////////////////////////////////////////////////////////////////////////
 KLineMessage *KLineCreateAuthenticatedMessage(
@@ -326,6 +332,7 @@ KLineMessage *KLineCreateAuthenticatedMessage(
   const size_t AUTH_SCMD_PAYLOAD_SZ = AUTH_SCMD_KLINE_PAYLOAD_SZ(sPayloadBytes);
 
   KLineMessage * const pM = KLineAllocMessage(addr, func, AUTH_SCMD_PAYLOAD_SZ, NULL);
+  ASSERT(pM);
 
   // Set up headers and scmd
   pM->u.aead.hdr.txcnt = pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
@@ -370,11 +377,11 @@ bool KLineAuthenticateMessage(
 
       const uint8_t * const tag = &pMsgIn->u.aead.sdata.u.sdata.spayload[sPayloadBytes];
 
-      uint8_t tagTmp[8] = { 0 };
+      uint8_t tagTmp[SIGNATURE_BYTES] = { 0 };
       int stat = cmacTag(&pThis->authRx, &pMsgIn->u.aead, tagTmp);
       ASSERT(0 == stat);
       if (0 == stat) {
-        stat = memcmp(tag, tagTmp, 8);
+        stat = memcmp(tag, tagTmp, SIGNATURE_BYTES);
         ASSERT_WARN(0 == stat);
       }
 
@@ -391,6 +398,7 @@ bool KLineAuthenticateMessage(
   return rval;
 }
 
+// ////////////////////////////////////////////////////////////////////////////
 // Gets the current TXCNT (next message)
 uint8_t KLineAuthGetTxCnt(
   KLineAuth * const pThis
@@ -398,6 +406,7 @@ uint8_t KLineAuthGetTxCnt(
   return pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt;
 }
 
+// ////////////////////////////////////////////////////////////////////////////
 // Gets the current RXCNT (last received message.)
 uint8_t KLineAuthGetRxCnt(
   KLineAuth * const pThis
@@ -405,6 +414,8 @@ uint8_t KLineAuthGetRxCnt(
   return pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt;
 }
 
+// ////////////////////////////////////////////////////////////////////////////
+// Sets TX count, for test purposes.
 void KLineAuthSetTxCnt(
   KLineAuth * const pThis,
   const uint8_t txcnt
