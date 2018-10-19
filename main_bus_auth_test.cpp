@@ -75,7 +75,7 @@ static void wakeupTest() {
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
-  pTx = KLineCreateChallenge(0, 64/8, 0, randombytes, NULL);
+  pTx = KLineCreateChallenge(0, 0, randombytes, NULL, 120);
   KLineAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120);
   KLineAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120);
   KLineFreeMessage(pTx);
@@ -221,6 +221,8 @@ static void authTest0(const size_t challengeBits) {
 
 // ////////////////////////////////////////////////////////////////////////////
 int main(char **c, int v) {
+  (void)c;
+  (void)v;
 
   authTest0(120);
   wakeupTest();

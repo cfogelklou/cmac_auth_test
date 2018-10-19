@@ -19,12 +19,13 @@ extern "C" {
 #define SK_BYTES 16
 #define CHALLENGE_BITS 120
 #define SIGNATURE_BYTES 8
+#define MAX_MISSED_MESSAGES 10
 
 // Pairing of CEM to PAK
 typedef struct PACKED KLinePairingTag {
-  // New SK (128 bits) (AES-CCM-128 for CEM->PAK)
+  // New SK (128 bits) (AES-CMAC-128 for CEM->PAK)
   uint8_t cemToPak[SK_BYTES];
-  // New SID(128 bits) (AES - CCM - 128 for PAK->CEM)
+  // New SID(128 bits) (AES - CMAC - 128 for PAK->CEM)
   uint8_t pakToCem[SK_BYTES];
 } KLinePairing;
 

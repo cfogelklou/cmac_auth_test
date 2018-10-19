@@ -378,7 +378,8 @@ bool KLineAuthenticateMessage(
     const size_t totalPacketSize = getPacketSize(pMsgIn);
 
     // Check that received message is after last received message.
-    if (pMsgIn->u.auth.hdr.txcnt > pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt) {
+    const int messagesLost = pMsgIn->u.auth.hdr.txcnt - pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt - 1;
+    if ((messagesLost >= 0) && (messagesLost <= MAX_MISSED_MESSAGES)) {
 
       pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = pMsgIn->u.auth.hdr.txcnt;
 
