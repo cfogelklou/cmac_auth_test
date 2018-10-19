@@ -108,6 +108,8 @@ extern "C" {
   // Adds the CS to a message.
   uint8_t KLineAddCs(KLineMessage * const pM);
 
+  // "Class" which can be used for receiving OR sending
+  // authenticated data.
   typedef struct KLineAuthTxRxTag {
     mbedtls_cipher_context_t cmac;
     union {
@@ -134,7 +136,8 @@ extern "C" {
     } nonce;
   } KLineAuthTxRx;
 
-  // Object which handles transmission and reception of authenticated messages.
+  // "Class" which can be used for receiving AND sending
+  // authenticated data.
   typedef struct KLineAuthTag {
     // Transmitter
     KLineAuthTxRx authTx;
