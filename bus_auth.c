@@ -195,8 +195,8 @@ void KLineAuthInit(
   KLineInitKey(&pThis->authTx, key);
 
   // Randomize the tx and rx nonces
-  defaultrandombytesFn(NULL, pThis->authTx.nonce.entireNonce.byteArray, sizeof(&pThis->authTx.nonce.entireNonce.byteArray));
-  defaultrandombytesFn(NULL, pThis->authRx.nonce.entireNonce.byteArray, sizeof(&pThis->authRx.nonce.entireNonce.byteArray));
+  defaultrandombytesFn(NULL, pThis->authTx.nonce.entireNonce.byteArray, sizeof(pThis->authTx.nonce.entireNonce.byteArray));
+  defaultrandombytesFn(NULL, pThis->authRx.nonce.entireNonce.byteArray, sizeof(pThis->authRx.nonce.entireNonce.byteArray));
   
   // Set rxcnt to 255, next message will fail.
   pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = 255;
