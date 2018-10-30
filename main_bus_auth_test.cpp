@@ -88,7 +88,9 @@ static std::string str2bin(const char * const buf, const size_t buflen) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-static void testVectorsCmac() {
+static void testVectorsCmac128Nist() {
+  cout << "Running testVectorsCmac128Nist()...";
+  (void)hexout;
   uint8_t signature[16];
   // Test vectors are from 
   // https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38b.pdf
@@ -151,10 +153,12 @@ static void testVectorsCmac() {
 
     ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
   }
+  cout << "ok." << endl;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 static void testVectors() {
+  cout << "Running testVectors()...";
   bool ok;
   KLineAuth pak;
   KLineAuth cem;
@@ -191,7 +195,7 @@ static void testVectors() {
     KLineReceiveAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, 120, &pPakChallengeResponse);
     ASSERT(pPakChallengeResponse);
 
-    hexout("pPakChallengeResponse", (uint8_t *)pPakChallengeResponse, pPakChallengeResponse->hdr.length + 2);
+    //hexout("pPakChallengeResponse", (uint8_t *)pPakChallengeResponse, pPakChallengeResponse->hdr.length + 2);
 
     const uint8_t expectedResponse[] = {
       0x00, 0x0d, 0x00, 0x01, 0x01, 0x80, 0xf0, 0x5d,
@@ -219,7 +223,7 @@ static void testVectors() {
   {
     const char hello[] = "hello";
     KLineMessage *pTx = KLineCreateAuthenticatedMessage(&cem, 0x11, 0x22, 0x33, hello, sizeof(hello));
-    hexout("expectedTx", (uint8_t *)pTx, pTx->hdr.length + 2);
+    //hexout("expectedTx", (uint8_t *)pTx, pTx->hdr.length + 2);
 
     const uint8_t expectedTx[] = {
       0x11, 0x13, 0x22, 0x01, 0x07, 0x33, 0x68, 0x65,
@@ -235,12 +239,14 @@ static void testVectors() {
 
   KLineAuthDestruct(&pak);
   KLineAuthDestruct(&cem);
+  cout << "ok." << endl;
 }
 
 
 // ////////////////////////////////////////////////////////////////////////////
 // Test case for first message from PAK to CEM after sleep.
 static void wakeupTest() {
+  cout << "Running wakeupTest()...";
   const char signedMsg[] = "signed";
   KLineMessage *pTx;
   bool ok;
@@ -304,10 +310,13 @@ static void wakeupTest() {
   ASSERT(ok);
   KLineFreeMessage(pTx);
   
+  cout << "ok." << endl;
+  
 }
 
 // Test case for first message from PAK to CEM after sleep.
 static void wakeupTest1() {
+  cout << "Running wakeupTest1()...";
   const char signedMsg[] = "signed";
   KLineMessage *pTx;
   bool ok;
@@ -382,11 +391,14 @@ static void wakeupTest1() {
   ok = KLineAuthenticateMessage(&cem, pTx, NULL);
   ASSERT(ok);
   KLineFreeMessage(pTx);
+  
+  cout << "ok." << endl;
 
 }
 
 // ////////////////////////////////////////////////////////////////////////////
 static void authTest0(const size_t challengeBits) {
+  cout << "Running authTest0( " << dec << challengeBits << " )...";
   const KLineAuthMessage *pSigned;
   bool ok;
   KLineMessage *pM;
@@ -490,6 +502,8 @@ static void authTest0(const size_t challengeBits) {
 
   KLineAuthDestruct(&pak);
   KLineAuthDestruct(&cem);
+  
+  cout << "ok." << endl;
 }
 
 // ////////////////////////////////////////////////////////////////////////////
@@ -497,7 +511,7 @@ int main(int v, char **c) {
   (void)c;
   (void)v;
 
-  testVectorsCmac();
+  testVectorsCmac128Nist();
   testVectors();
 
   authTest0(120);
@@ -505,7 +519,7 @@ int main(int v, char **c) {
   wakeupTest1();
 
   // Test with challenges of less than 120 bits (to save bandwidth)
-  for (size_t challengeBits = 64; challengeBits < 120; challengeBits+=8) {
+  for (size_t challengeBits = 64; challengeBits <= 120; challengeBits+=8) {
     authTest0(challengeBits);
   }
 
