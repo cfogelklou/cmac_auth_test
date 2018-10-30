@@ -208,10 +208,12 @@ static void testVectors() {
     ASSERT_WARN(2 == KLineAuthGetTxCnt(&pak));
     ASSERT_WARN(0 == KLineAuthGetRxCnt(&cem));
 
-
     // Authenticate the challenge response
     ok = KLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
     ASSERT(ok);
+
+    // Check that rxcount for CEM is now 1 after the challenge.
+    ASSERT_WARN(1 == KLineAuthGetRxCnt(&cem));
 
     // Free the response
     KLineFreeMessage(pPakChallengeResponse);
@@ -297,6 +299,9 @@ static void wakeupTest() {
     // Authenticate the challenge response
     ok = KLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
     ASSERT(ok);
+
+    // Check that rxcount for CEM is now 1 after the challenge.
+    ASSERT_WARN(1 == KLineAuthGetRxCnt(&cem));
 
     // Free the response
     KLineFreeMessage(pPakChallengeResponse);
@@ -432,6 +437,7 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits) {
     // Authenticate the challenge response
     ok = KLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
     ASSERT(ok);
+    ASSERT_WARN(1 == KLineAuthGetRxCnt(&cem));
 
     // Free the response
     KLineFreeMessage(pPakChallengeResponse);
@@ -472,6 +478,8 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits) {
     // Authenticate the challenge response
     ok = KLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
     ASSERT(ok);
+
+    ASSERT_WARN(1 == KLineAuthGetRxCnt(&cem));
 
     // Free the response
     KLineFreeMessage(pPakChallengeResponse);
