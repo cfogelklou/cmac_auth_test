@@ -227,7 +227,7 @@ KLineMessage *KLineCreateChallenge(
   const size_t challengeLenBits
 )
 {
-  KLineChallenge challenge = { 0 };
+  KLineChallenge challenge = { {0} };
 
   ASSERT(0 == challengeLenBits % 8);
   const size_t challengeLen = (challengeLenBits >= 32) ? challengeLenBits / 8 : 120 / 8;
@@ -384,7 +384,6 @@ bool KLineAuthenticateMessage(
   bool rval = false;
   ASSERT(pMsgIn);
   if (0 == KLineCheckCs(pMsgIn)) {
-    const size_t totalPacketSize = getPacketSize(pMsgIn);
 
     // Check that received message is after last received message.
     const int messagesLost = pMsgIn->u.auth.hdr.txcnt - pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt - 1;
@@ -442,11 +441,12 @@ void KLineAuthSetTxCnt(
   pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt = txcnt;
 }
 
+// ////////////////////////////////////////////////////////////////////////////
 void KLineTestCmac(
   const uint8_t key[SK_BYTES],
   const uint8_t *buf,
   const size_t buflen,
-  const uint8_t signature[16]
+  uint8_t signature[16]
 )
 {
   mbedtls_cipher_context_t cmac;
