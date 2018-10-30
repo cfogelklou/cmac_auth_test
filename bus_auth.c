@@ -442,3 +442,38 @@ void KLineAuthSetTxCnt(
   pThis->authTx.nonce.txNoncePlusChallenge.tx_cnt = txcnt;
 }
 
+void KLineTestCmac(
+  const uint8_t key[SK_BYTES],
+  const uint8_t *buf,
+  const size_t buflen,
+  const uint8_t signature[16]
+)
+{
+  mbedtls_cipher_context_t cmac;
+  const mbedtls_cipher_info_t * const pCInfo =
+    mbedtls_cipher_info_from_type(MBEDTLS_CIPHER_AES_128_ECB);
+  ASSERT(NULL != pCInfo);
+  mbedtls_cipher_init(&cmac);
+
+  int stat = mbedtls_cipher_setup(&cmac, pCInfo);
+  ASSERT(0 == stat);
+
+  stat = mbedtls_cipher_cmac_starts(&cmac, key, SK_BYTES * 8);
+  ASSERT(0 == stat);
+
+  if (buf) {
+    // CMAC over NONCE
+    stat = mbedtls_cipher_cmac_update(&cmac, buf, buflen);
+    ASSERT(0 == stat);
+  }
+
+  // Finish and reset, so can be started again without referring to key.
+  uint8_t tmp[16 + 1] = { 0 }; // plus one senty byte
+  stat = mbedtls_cipher_cmac_finish(&cmac, tmp);
+  ASSERT(0 == stat);
+  ASSERT(0 == tmp[16]);
+
+  memcpy(signature, tmp, 16);
+
+  mbedtls_cipher_free(&cmac);
+}

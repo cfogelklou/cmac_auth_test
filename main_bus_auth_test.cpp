@@ -40,6 +40,205 @@ static void randombytes(void *p, uint8_t *pBuf, size_t bufLen) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
+static void hexout(const char *name, const uint8_t buf[], const size_t len) {
+  cout << "const uint8_t " << name << "[] = {" << endl << "  ";
+  for (size_t i = 0; i < len; i++) {
+    cout << hex << "0x" << ((buf[i] & 0xf0) >> 4) << ((buf[i] & 0x0f) >> 0);
+    if (i == (len - 1)) {
+      cout << endl << "};" << endl;
+    }
+    else {
+      cout << ", ";
+      if (0 == ((i + 1) % 8)) {
+        cout << endl << "  ";
+      }
+    }
+  };
+}
+
+// ////////////////////////////////////////////////////////////////////////////
+static std::string str2bin(const char * const buf, const size_t buflen) {
+  std::string bin;
+  int byteIdx = 0;
+  uint8_t byte = 0;
+  for (size_t i = 0; i < buflen; i++) {
+    uint8_t b = 0;
+    const char c = tolower(buf[i]);
+    bool valid = false;
+    if ((c >= '0') && (c <= '9')) {
+      b = (c - '0');
+      valid = true;
+    }
+    else if ((c >= 'a') && (c <= 'f')) {
+      b = (c - 'a' + 10);
+      valid = true;
+    }
+    if (valid) {
+      if (byteIdx == 1) {
+        byte = ((byte << 4) | b);
+        bin.push_back(byte);
+      }
+      else {
+        byte = b;
+      }
+      byteIdx = (byteIdx + 1) % 2;
+    }
+  }
+  return bin;
+}
+
+// ////////////////////////////////////////////////////////////////////////////
+static void testVectorsCmac() {
+  uint8_t signature[16];
+  // Test vectors are from 
+  // https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38b.pdf
+  const char skstr[] = "2b7e1516 28aed2a6 abf71588 09cf4f3c";
+  std::string keybin = str2bin(skstr, sizeof(skstr));
+  ASSERT_WARN(keybin.length() == 16);
+  {
+    // Example 1: Mlen 0 
+    const uint8_t m[] = { 0 };
+    const size_t mlen = 0;
+    const char tagstr[] = "bb1d6929 e9593728 7fa37d12 9b756746";
+    std::string tagbin = str2bin(tagstr, sizeof(tagstr));
+    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+
+    ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
+  }
+
+  {
+    // Example 1: Mlen 128 
+    const char mstr[] = "6bc1bee2 2e409f96 e93d7e11 7393172a";
+    std::string mbin = str2bin(mstr, sizeof(mstr));
+    const uint8_t *m = (const uint8_t *)mbin.data();
+    const size_t mlen = mbin.length();
+    const char tagstr[] = "070a16b4 6b4d4144 f79bdd9d d04a287c";
+    std::string tagbin = str2bin(tagstr, sizeof(tagstr));
+    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+
+    ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
+  }
+
+  {
+    // Example 1: Mlen 320 
+    const char mstr[] =
+      "6bc1bee2 2e409f96 e93d7e11 7393172a"
+      "ae2d8a57 1e03ac9c 9eb76fac 45af8e51"
+      "30c81c46 a35ce411";
+    std::string mbin = str2bin(mstr, sizeof(mstr));
+    const uint8_t *m = (const uint8_t *)mbin.data();
+    const size_t mlen = mbin.length();
+    const char tagstr[] = "dfa66747 de9ae630 30ca3261 1497c827";
+    std::string tagbin = str2bin(tagstr, sizeof(tagstr));
+    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+
+    ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
+  }
+
+  {
+    // Example 1: Mlen 512 
+    const char mstr[] =
+      "6bc1bee2 2e409f96 e93d7e11 7393172a"
+      "ae2d8a57 1e03ac9c 9eb76fac 45af8e51"
+      "30c81c46 a35ce411 e5fbc119 1a0a52ef"
+      "f69f2445 df4f9b17 ad2b417b e66c3710";
+    std::string mbin = str2bin(mstr, sizeof(mstr));
+    const uint8_t *m = (const uint8_t *)mbin.data();
+    const size_t mlen = mbin.length();
+    const char tagstr[] = "51f0bebf 7e3b9d92 fc497417 79363cfe";
+    std::string tagbin = str2bin(tagstr, sizeof(tagstr));
+    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+
+    ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
+  }
+}
+
+// ////////////////////////////////////////////////////////////////////////////
+static void testVectors() {
+  bool ok;
+  KLineAuth pak;
+  KLineAuth cem;
+
+  const KLinePairing pairing = {
+    { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f },
+  { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f }
+  };
+
+  const KLineChallenge challenge = {
+    0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e
+  };
+
+
+  KLineAuthInit(&pak);
+  KLineAuthInit(&cem);
+
+  // CEM and PAK must pair with each other.
+  KLineMessage *pM = KLineCreatePairing(0, 0, randombytes, NULL);
+  memcpy(&pM->u.pairing, &pairing, sizeof(pairing));
+  KLineAuthPairCEM(&cem, &pM->u.pairing);
+  KLineAuthPairPAKM(&pak, &pM->u.pairing);
+  KLineFreeMessage(pM);
+
+  // Generate a challenge, apply the CEM and PAK.
+  pM = KLineCreateChallenge(0, 0, randombytes, NULL, 120);
+  memcpy(&pM->u.challenge, &challenge, sizeof(challenge));
+  KLineReceiveAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge, 120, nullptr);
+  // PAK will generate a challenge response
+  {
+    KLineMessage *pPakChallengeResponse = nullptr;
+
+    // Receive challenge and generate response
+    KLineReceiveAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, 120, &pPakChallengeResponse);
+    ASSERT(pPakChallengeResponse);
+
+    hexout("pPakChallengeResponse", (uint8_t *)pPakChallengeResponse, pPakChallengeResponse->hdr.length + 2);
+
+    const uint8_t expectedResponse[] = {
+      0x00, 0x0d, 0x00, 0x01, 0x01, 0x80, 0xf0, 0x5d,
+      0xf7, 0x4a, 0x80, 0xfd, 0x01, 0x77, 0x96
+    };
+
+    // Check that the signature matches the expected signature
+    ASSERT(0 == memcmp(expectedResponse, pPakChallengeResponse, sizeof(expectedResponse)));
+
+    // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 from the auth message)
+    ASSERT_WARN(2 == KLineAuthGetTxCnt(&pak));
+    ASSERT_WARN(0 == KLineAuthGetRxCnt(&cem));
+
+
+    // Authenticate the challenge response
+    ok = KLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
+    ASSERT(ok);
+
+    // Free the response
+    KLineFreeMessage(pPakChallengeResponse);
+
+  }
+
+  KLineFreeMessage(pM);
+  {
+    const char hello[] = "hello";
+    KLineMessage *pTx = KLineCreateAuthenticatedMessage(&cem, 0x11, 0x22, 0x33, hello, sizeof(hello));
+    hexout("expectedTx", (uint8_t *)pTx, pTx->hdr.length + 2);
+
+    const uint8_t expectedTx[] = {
+      0x11, 0x13, 0x22, 0x01, 0x07, 0x33, 0x68, 0x65,
+      0x6c, 0x6c, 0x6f, 0x00, 0x5f, 0xc5, 0xe6, 0x9f,
+      0x27, 0x25, 0x17, 0xc5, 0x44
+    };
+
+    // Check that the signature matches the expected signature
+    ASSERT(0 == memcmp(expectedTx, pTx, sizeof(expectedTx)));
+
+    KLineFreeMessage(pTx);
+  }
+
+  KLineAuthDestruct(&pak);
+  KLineAuthDestruct(&cem);
+}
+
+
+// ////////////////////////////////////////////////////////////////////////////
 // Test case for first message from PAK to CEM after sleep.
 static void wakeupTest() {
   const char signedMsg[] = "signed";
@@ -294,6 +493,9 @@ static void authTest0(const size_t challengeBits) {
 int main(char **c, int v) {
   (void)c;
   (void)v;
+
+  testVectorsCmac();
+  testVectors();
 
   authTest0(120);
   wakeupTest();
