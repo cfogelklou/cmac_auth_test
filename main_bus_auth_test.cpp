@@ -401,8 +401,6 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits) {
   const KLineAuthMessage *pSigned;
   bool ok;
   KLineMessage *pM;
-  pM = KLineAllocMessage(0x12, 0x05, 0, nullptr);
-  KLineFreeMessage(pM);
 
   KLineAuth pak;
   KLineAuth cem;
