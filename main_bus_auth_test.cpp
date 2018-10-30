@@ -372,7 +372,10 @@ static void wakeupTest1() {
 
   // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 for challenge response)
   ASSERT_WARN(2 == KLineAuthGetTxCnt(&pak));
-  ASSERT_WARN(0 == KLineAuthGetRxCnt(&cem));
+  
+  // cem has received one authentication message, so
+  // it should have rxcount of 1.
+  ASSERT_WARN(1 == KLineAuthGetRxCnt(&cem));
 
   // Allocate and send a message, which will be OK as now there is a session
   pTx = KLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
