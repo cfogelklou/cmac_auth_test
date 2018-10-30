@@ -240,11 +240,14 @@ KLineMessage *KLineCreateChallenge(
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-void KLineAuthChallenge(
+void KLineReceiveAuthChallenge(
   KLineAuth * const pThis,
   const KLineChallenge *txChallenge,
   const KLineChallenge *rxChallenge,
-  const size_t challengeLenBits
+  const size_t challengeLenBits,
+  // Set to non-null to allocate a response
+  KLineMessage **ppTxChallengeResponse
+
 ) {
   ASSERT(0 == challengeLenBits % 8);
   const size_t challengeLen = (challengeLenBits >= 32) ? challengeLenBits / 8 : 120 / 8;
@@ -266,6 +269,10 @@ void KLineAuthChallenge(
     pThis->authRx.nonce.rxNoncePlusChallenge.rx_cnt = 0;
     memcpy(&pThis->authRx.nonce.rxNoncePlusChallenge.challenge.challenge120[0], rxChallenge, cpyBytes);
     memset(&pThis->authRx.nonce.rxNoncePlusChallenge.challenge.challenge120[cpyBytes], 0, padBytes);
+  }
+
+  if (ppTxChallengeResponse) {
+    *ppTxChallengeResponse = KLineCreateAuthenticatedMessage(pThis, 0, 0, 0x80, NULL, 0);
   }
 }
 
@@ -333,9 +340,9 @@ KLineMessage *KLineCreateAuthenticatedMessage(
   const uint8_t func,
   const uint8_t scmd,
   const void *sPayloadPtr,
-  const size_t sPayloadBytes
+  const size_t sb
 ) {
-  
+  const size_t sPayloadBytes = (sPayloadPtr) ? sb : 0;
   // Calculate the size of the data which will be signed.
   const size_t SDATA_LEN = 1 + sPayloadBytes; // scmd + sPayloadBytes;
   const size_t AUTH_SCMD_PAYLOAD_SZ = AUTH_SCMD_KLINE_PAYLOAD_SZ(sPayloadBytes);
@@ -349,7 +356,9 @@ KLineMessage *KLineCreateAuthenticatedMessage(
   pM->u.auth.sdata.u.sdata.scmd = scmd;
 
   // Copy the signed payload
-  memcpy(pM->u.auth.sdata.u.sdata.spayload, sPayloadPtr, sPayloadBytes);
+  if (sPayloadBytes > 0) {
+    memcpy(pM->u.auth.sdata.u.sdata.spayload, sPayloadPtr, sPayloadBytes);
+  }
 
   // Get pointer to ciphertext out and the signature out
   uint8_t * const tag = &pM->u.auth.sdata.u.sdata.spayload[sPayloadBytes];

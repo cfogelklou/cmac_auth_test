@@ -199,7 +199,11 @@ KLineMessage *KLineCreateChallenge(
 );
 
 // Receives a 120-bit challenge
-void KLineAuthChallenge(
+// The positive response is a signed “empty” message of type SCMD=0x80.  
+// If the signature matches the expected signature calculated by the 
+// message receiver, then the message receiver knows that the message 
+// sender has the correct transmit key and challenge.
+void KLineReceiveAuthChallenge(
   KLineAuth * const pThis,
 
   /// txChallenge: Sets the 120-bit challenge set by the remote device, 
@@ -210,7 +214,10 @@ void KLineAuthChallenge(
   const KLineChallenge *rxChallenge,
 
   // Set to >= 32 and < 120 to set number of challenge bits to < 120
-  const size_t challengeLenBits
+  const size_t challengeLenBits,
+
+  // Set to non-null to allocate a response
+  KLineMessage **ppTxChallengeResponse
 );
 
 // Create a pairing message.
