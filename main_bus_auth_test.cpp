@@ -90,7 +90,6 @@ static std::string str2bin(const char * const buf, const size_t buflen) {
 // ////////////////////////////////////////////////////////////////////////////
 static void testVectorsCmac128Nist() {
   cout << "Running testVectorsCmac128Nist()...";
-  (void)hexout;
   uint8_t signature[16];
   // Test vectors are from 
   // https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38b.pdf
@@ -397,8 +396,8 @@ static void wakeupTest1() {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-static void authTest0(const size_t challengeBits) {
-  cout << "Running authTest0( " << dec << challengeBits << " )...";
+static void authTestWithVariableChallengeBits(const size_t challengeBits) {
+  cout << "Running authTestWithVariableChallengeBits( " << dec << challengeBits << " )...";
   const KLineAuthMessage *pSigned;
   bool ok;
   KLineMessage *pM;
@@ -514,13 +513,12 @@ int main(int v, char **c) {
   testVectorsCmac128Nist();
   testVectors();
 
-  authTest0(120);
   wakeupTest();
   wakeupTest1();
 
   // Test with challenges of less than 120 bits (to save bandwidth)
   for (size_t challengeBits = 64; challengeBits <= 120; challengeBits+=8) {
-    authTest0(challengeBits);
+    authTestWithVariableChallengeBits(challengeBits);
   }
 
   return 0;
