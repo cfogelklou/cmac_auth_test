@@ -30,9 +30,18 @@ file(GLOB MBEDTLS_SRC
   mbedtls/library/cmac.c
 )
 
+file(GLOB CIFRA_SRC
+  cifra/src/modes.c
+  cifra/src/cmac.c
+  cifra/src/cbcmac.c
+  cifra/src/blockwise.c
+  cifra/src/gf128.c
+)
+
 set(APP_SOURCE_FILES
   ${LOCAL_SRC}
   ${MBEDTLS_SRC}
+  ${CIFRA_SRC}
 )
 
 include_directories(
@@ -40,6 +49,8 @@ include_directories(
   config
   mbedtls/include
   mbedtls/include/mbedtls
+  cifra/src
+  cifra/src/ext
 )
 
 add_executable(bus_auth ${APP_SOURCE_FILES})

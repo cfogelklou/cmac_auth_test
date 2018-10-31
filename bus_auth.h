@@ -256,6 +256,13 @@ void KLineTestCmac(
   const size_t buflen,
   uint8_t signature[16]
 );
+  
+void KLineTestCmacCifra(
+  const uint8_t key[SK_BYTES],
+  const uint8_t *buf,
+  const size_t buflen,
+  uint8_t signature[16]
+                        );
 
 #ifdef __cplusplus
 }

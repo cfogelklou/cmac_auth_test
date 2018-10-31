@@ -1,3 +1,6 @@
 [submodule "mbedtls"]
 	path = mbedtls
 	url = https://github.com/ARMmbed/mbedtls
+[submodule "cifra"]
+	path = cifra
+	url = https://github.com/ctz/cifra

@@ -88,8 +88,15 @@ static std::string str2bin(const char * const buf, const size_t buflen) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////
-static void testVectorsCmac128Nist() {
+static void testVectorsCmac128Nist(const bool useCifra) {
+  auto cmac = (useCifra) ? KLineTestCmacCifra : KLineTestCmac;
   cout << "Running testVectorsCmac128Nist()...";
+  if (useCifra) {
+    cout << "cifra cmac + mbedtls aes...";
+  }
+  else {
+    cout << "pure mbedtls...";
+  }
   uint8_t signature[16];
   // Test vectors are from 
   // https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38b.pdf
@@ -102,7 +109,7 @@ static void testVectorsCmac128Nist() {
     const size_t mlen = 0;
     const char tagstr[] = "bb1d6929 e9593728 7fa37d12 9b756746";
     std::string tagbin = str2bin(tagstr, sizeof(tagstr));
-    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+    cmac((uint8_t *)keybin.data(), m, mlen, signature);
 
     ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
   }
@@ -115,7 +122,7 @@ static void testVectorsCmac128Nist() {
     const size_t mlen = mbin.length();
     const char tagstr[] = "070a16b4 6b4d4144 f79bdd9d d04a287c";
     std::string tagbin = str2bin(tagstr, sizeof(tagstr));
-    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+    cmac((uint8_t *)keybin.data(), m, mlen, signature);
 
     ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
   }
@@ -131,7 +138,7 @@ static void testVectorsCmac128Nist() {
     const size_t mlen = mbin.length();
     const char tagstr[] = "dfa66747 de9ae630 30ca3261 1497c827";
     std::string tagbin = str2bin(tagstr, sizeof(tagstr));
-    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+    cmac((uint8_t *)keybin.data(), m, mlen, signature);
 
     ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
   }
@@ -148,7 +155,7 @@ static void testVectorsCmac128Nist() {
     const size_t mlen = mbin.length();
     const char tagstr[] = "51f0bebf 7e3b9d92 fc497417 79363cfe";
     std::string tagbin = str2bin(tagstr, sizeof(tagstr));
-    KLineTestCmac((uint8_t *)keybin.data(), m, mlen, signature);
+    cmac((uint8_t *)keybin.data(), m, mlen, signature);
 
     ASSERT(0 == memcmp(signature, tagbin.data(), sizeof(signature)));
   }
@@ -161,6 +168,7 @@ static void testVectors() {
   bool ok;
   KLineAuth pak;
   KLineAuth cem;
+  
 
   const KLinePairing pairing = {
     { 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f },
@@ -516,7 +524,8 @@ int main(int v, char **c) {
   (void)c;
   (void)v;
 
-  testVectorsCmac128Nist();
+  testVectorsCmac128Nist(false);
+  testVectorsCmac128Nist(true);
   testVectors();
 
   wakeupTest();

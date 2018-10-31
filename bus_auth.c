@@ -477,3 +477,62 @@ void KLineTestCmac(
 
   mbedtls_cipher_free(&cmac);
 }
+
+// /////////////////////////////////////////////////////////////////////////////
+// Use Cifra for CMAC, mbedtls for AES.
+// Note, this is how you can implement CMAC using your own AES ECB 128 implementation.
+#include "mbedtls/aes.h"
+#include "cifra/src/modes.h"
+
+// Decrypt not used by CMAC, so place a dummy function here.
+static void maes_decrypt(void *ctx, const uint8_t *in, uint8_t *out){
+  // Should never get here.
+  ASSERT(false);
+};
+
+// Encrypt is used by CMAC.
+static void maes_encrypt(void *ctx, const uint8_t *in, uint8_t *out){
+  mbedtls_aes_context *p = (mbedtls_aes_context *)ctx;
+  mbedtls_aes_encrypt(p, in, out);
+  return;
+};
+
+// /////////////////////////////////////////////////////////////////////////////
+void KLineTestCmacCifra(
+                   const uint8_t key[SK_BYTES],
+                   const uint8_t *buf,
+                   const size_t buflen,
+                   uint8_t signature[16]
+                   )
+{
+  int stat = 0;
+  mbedtls_aes_context enc;
+  mbedtls_aes_init(&enc);
+  mbedtls_aes_setkey_enc(&enc, key, SK_BYTES*8);
+
+  const cf_prp mbedtlsPrp = {
+    16, //size_t blocksz;
+    maes_encrypt,//cf_prp_block encrypt;
+    maes_decrypt//cf_prp_block decrypt;
+  };
+  cf_cmac cmac = {
+    &mbedtlsPrp, //const cf_prp *prp;
+    &enc, //void *prpctx;
+    {0},
+    {0}
+  };
+  
+  cf_cmac_init(&cmac, &mbedtlsPrp, &enc);
+  ASSERT(0 == stat);
+
+  uint8_t tmp[16 + 1] = { 0 }; // plus one senty byte
+  cf_cmac_sign(&cmac, buf, buflen, tmp);
+  
+  // Finish and reset, so can be started again without referring to key.
+  ASSERT(0 == stat);
+  ASSERT(0 == tmp[16]);
+  
+  memcpy(signature, tmp, 16);
+  mbedtls_aes_free(&enc);
+
+}
