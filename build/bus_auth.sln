@@ -1,0 +1,27 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.26403.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bus_auth", "bus_auth.vcxproj", "{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		MinSizeRel|Win32 = MinSizeRel|Win32
+		Release|Win32 = Release|Win32
+		RelWithDebInfo|Win32 = RelWithDebInfo|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.Debug|Win32.ActiveCfg = Debug|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.Debug|Win32.Build.0 = Debug|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.MinSizeRel|Win32.ActiveCfg = MinSizeRel|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.MinSizeRel|Win32.Build.0 = MinSizeRel|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.Release|Win32.ActiveCfg = Release|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.Release|Win32.Build.0 = Release|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.RelWithDebInfo|Win32.ActiveCfg = RelWithDebInfo|Win32
+		{C4F9187A-05F7-3A32-90C8-DBC18D9EE774}.RelWithDebInfo|Win32.Build.0 = RelWithDebInfo|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
