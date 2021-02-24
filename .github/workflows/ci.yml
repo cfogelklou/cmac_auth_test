@@ -3,52 +3,51 @@ name: CI
 on:
   push:
     # Sequence of patterns matched against refs/heads
-    branches:      
+    branches:
       - devel
       - master
       - main
       - feat/chfo/200222_ci
 
   pull_request:
-      types:
-        - labeled
-        - unlabeled
-        - synchronize
-        - opened
-        - edited
-        - ready_for_review
-        - reopened
-        - unlocked
+    types:
+      - labeled
+      - unlabeled
+      - synchronize
+      - opened
+      - edited
+      - ready_for_review
+      - reopened
+      - unlocked
 
-    pull_request_review:
-      types:
-        - submitted
+  pull_request_review:
+    types:
+      - submitted
     status: {}
-  env:
-    RELEASE: release
+env:
+  RELEASE: release
 
 jobs:
   build:
     runs-on: ubuntu-latest
     name: Build
     steps:
+      - uses: actions/checkout@v1
 
-    - uses: actions/checkout@v1
+      - name: Checkout submodules
+        run: |
+          echo Checkout submodules
+          git submodule sync
+          git submodule update --init --recursive
 
-    - name: Checkout submodules
-      run: |
-        echo Checkout submodules
-        git submodule sync
-        git submodule update --init --recursive
+      - name: build
+        run: |
+          pushd build
+          cmake ..
+          popd
 
-    - name: build
-      run: |
-        pushd build
-        cmake ..
-        popd
-
-    - name: test
-      run: |
-        pushd build
-        ./bus_auth
-        popd
+      - name: test
+        run: |
+          pushd build
+          ./bus_auth
+          popd
