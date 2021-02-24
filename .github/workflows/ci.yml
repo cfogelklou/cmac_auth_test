@@ -44,6 +44,7 @@ jobs:
         run: |
           pushd build
           cmake ..
+          build -j8
           popd
 
       - name: test
