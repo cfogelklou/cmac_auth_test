@@ -7,7 +7,6 @@ on:
       - devel
       - master
       - main
-      - feat/chfo/200222_ci
 
   pull_request:
     types:
