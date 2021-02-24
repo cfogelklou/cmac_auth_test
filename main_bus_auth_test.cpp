@@ -197,8 +197,8 @@ static void testVectors()
 {
   cout << "Running testVectors()...";
   bool ok;
-  BusLineAuth pak;
-  BusLineAuth cem;
+  BusLineAuth bus_slave;
+  BusLineAuth bus_master;
 
   const BusLinePairing pairing = {
       {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f},
@@ -206,26 +206,26 @@ static void testVectors()
 
   const BusLineChallenge challenge = {{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e}};
 
-  BusLineAuthInit(&pak);
-  BusLineAuthInit(&cem);
+  BusLineAuthInit(&bus_slave);
+  BusLineAuthInit(&bus_master);
 
   // CEM and PAK must pair with each other.
   BusLineMessage *pM = BusLineCreatePairing(0, 0, randombytes, NULL);
   memcpy(&pM->u.pairing, &pairing, sizeof(pairing));
-  BusLineAuthPairCEM(&cem, &pM->u.pairing);
-  BusLineAuthPairPAKM(&pak, &pM->u.pairing);
+  BusLineAuthPairCEM(&bus_master, &pM->u.pairing);
+  BusLineAuthPairPAKM(&bus_slave, &pM->u.pairing);
   BusLineFreeMessage(pM);
 
   // Generate a challenge, apply the CEM and PAK.
   pM = BusLineCreateChallenge(0, 0, randombytes, NULL, 120);
   memcpy(&pM->u.challenge, &challenge, sizeof(challenge));
-  BusLineReceiveAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge, 120, nullptr);
+  BusLineReceiveAuthChallenge(&bus_master, &pM->u.challenge, &pM->u.challenge, 120, nullptr);
   // PAK will generate a challenge response
   {
     BusLineMessage *pPakChallengeResponse = nullptr;
 
     // Receive challenge and generate response
-    BusLineReceiveAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, 120, &pPakChallengeResponse);
+    BusLineReceiveAuthChallenge(&bus_slave, &pM->u.challenge, &pM->u.challenge, 120, &pPakChallengeResponse);
     ASSERT(pPakChallengeResponse);
 
     //hexout("pPakChallengeResponse", (uint8_t *)pPakChallengeResponse, pPakChallengeResponse->hdr.length + 2);
@@ -238,15 +238,15 @@ static void testVectors()
     ASSERT(0 == memcmp(expectedResponse, pPakChallengeResponse, sizeof(expectedResponse)));
 
     // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 from the auth message)
-    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&pak));
-    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&bus_slave));
+    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&bus_master));
 
     // Authenticate the challenge response
-    ok = BusLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
+    ok = BusLineAuthenticateMessage(&bus_master, pPakChallengeResponse, NULL);
     ASSERT(ok);
 
     // Check that rxcount for CEM is now 1 after the challenge.
-    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&bus_master));
 
     // Free the response
     BusLineFreeMessage(pPakChallengeResponse);
@@ -255,7 +255,7 @@ static void testVectors()
   BusLineFreeMessage(pM);
   {
     const char hello[] = "hello";
-    BusLineMessage *pTx = BusLineCreateAuthenticatedMessage(&cem, 0x11, 0x22, 0x33, hello, sizeof(hello));
+    BusLineMessage *pTx = BusLineCreateAuthenticatedMessage(&bus_master, 0x11, 0x22, 0x33, hello, sizeof(hello));
     //hexout("expectedTx", (uint8_t *)pTx, pTx->hdr.length + 2);
 
     const uint8_t expectedTx[] = {
@@ -269,8 +269,8 @@ static void testVectors()
     BusLineFreeMessage(pTx);
   }
 
-  BusLineAuthDestruct(&pak);
-  BusLineAuthDestruct(&cem);
+  BusLineAuthDestruct(&bus_slave);
+  BusLineAuthDestruct(&bus_master);
   cout << "ok." << endl;
 }
 
@@ -282,57 +282,57 @@ static void wakeupTest()
   const char signedMsg[] = "signed";
   BusLineMessage *pTx;
   bool ok;
-  BusLineAuth pak;
-  BusLineAuth cem;
+  BusLineAuth bus_slave;
+  BusLineAuth bus_master;
 
-  BusLineAuthInit(&pak);
-  BusLineAuthInit(&cem);
+  BusLineAuthInit(&bus_slave);
+  BusLineAuthInit(&bus_master);
 
   // Counters should not match and should not be zero as no challenge yet.
-  ASSERT_WARN(0 != BusLineAuthGetTxCnt(&pak));
-  ASSERT_WARN(0 != BusLineAuthGetRxCnt(&cem));
-  ASSERT_WARN(BusLineAuthGetTxCnt(&pak) != BusLineAuthGetRxCnt(&cem));
+  ASSERT_WARN(0 != BusLineAuthGetTxCnt(&bus_slave));
+  ASSERT_WARN(0 != BusLineAuthGetRxCnt(&bus_master));
+  ASSERT_WARN(BusLineAuthGetTxCnt(&bus_slave) != BusLineAuthGetRxCnt(&bus_master));
 
   // CEM and PAK must pair with each other.
   pTx = BusLineCreatePairing(0, 0, randombytes, NULL);
-  BusLineAuthPairCEM(&cem, &pTx->u.pairing);
-  BusLineAuthPairPAKM(&pak, &pTx->u.pairing);
+  BusLineAuthPairCEM(&bus_master, &pTx->u.pairing);
+  BusLineAuthPairPAKM(&bus_slave, &pTx->u.pairing);
   BusLineFreeMessage(pTx);
 
   // Counters should not match and should not be zero as no challenge yet.
-  ASSERT_WARN(0 != BusLineAuthGetTxCnt(&pak));
-  ASSERT_WARN(0 != BusLineAuthGetRxCnt(&cem));
-  ASSERT_WARN(BusLineAuthGetTxCnt(&pak) != BusLineAuthGetRxCnt(&cem));
+  ASSERT_WARN(0 != BusLineAuthGetTxCnt(&bus_slave));
+  ASSERT_WARN(0 != BusLineAuthGetRxCnt(&bus_master));
+  ASSERT_WARN(BusLineAuthGetTxCnt(&bus_slave) != BusLineAuthGetRxCnt(&bus_master));
 
   // Allocate and send a message, which will FAIL as no challenge yet.
-  pTx = BusLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  ok = BusLineAuthenticateMessage(&cem, pTx, NULL);
+  pTx = BusLineCreateAuthenticatedMessage(&bus_slave, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  ok = BusLineAuthenticateMessage(&bus_master, pTx, NULL);
   BusLineFreeMessage(pTx);
   ASSERT(false == ok);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
   pTx = BusLineCreateChallenge(0, 0, randombytes, NULL, 120);
-  BusLineReceiveAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
+  BusLineReceiveAuthChallenge(&bus_master, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
 
   // PAK will generate a challenge response
   {
     BusLineMessage *pPakChallengeResponse = nullptr;
 
     // Receive challenge and generate response
-    BusLineReceiveAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120, &pPakChallengeResponse);
+    BusLineReceiveAuthChallenge(&bus_slave, &pTx->u.challenge, &pTx->u.challenge, 120, &pPakChallengeResponse);
     ASSERT(pPakChallengeResponse);
 
     // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 from the auth message)
-    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&pak));
-    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&bus_slave));
+    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&bus_master));
 
     // Authenticate the challenge response
-    ok = BusLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
+    ok = BusLineAuthenticateMessage(&bus_master, pPakChallengeResponse, NULL);
     ASSERT(ok);
 
     // Check that rxcount for CEM is now 1 after the challenge.
-    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&bus_master));
 
     // Free the response
     BusLineFreeMessage(pPakChallengeResponse);
@@ -340,8 +340,8 @@ static void wakeupTest()
 
   BusLineFreeMessage(pTx);
   // Allocate and send a message, which will be OK as now there is a session
-  pTx = BusLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  ok = BusLineAuthenticateMessage(&cem, pTx, NULL);
+  pTx = BusLineCreateAuthenticatedMessage(&bus_slave, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  ok = BusLineAuthenticateMessage(&bus_master, pTx, NULL);
   ASSERT(ok);
   BusLineFreeMessage(pTx);
 
@@ -355,57 +355,57 @@ static void wakeupTest1()
   const char signedMsg[] = "signed";
   BusLineMessage *pTx;
   bool ok;
-  BusLineAuth pak;
-  BusLineAuth cem;
+  BusLineAuth bus_slave;
+  BusLineAuth bus_master;
 
-  BusLineAuthInit(&pak);
-  BusLineAuthInit(&cem);
+  BusLineAuthInit(&bus_slave);
+  BusLineAuthInit(&bus_master);
 
   // Counters should not match and should not be zero as no challenge yet.
-  ASSERT_WARN(0 != BusLineAuthGetTxCnt(&pak));
-  ASSERT_WARN(0 != BusLineAuthGetRxCnt(&cem));
-  ASSERT_WARN(BusLineAuthGetTxCnt(&pak) != BusLineAuthGetRxCnt(&cem));
+  ASSERT_WARN(0 != BusLineAuthGetTxCnt(&bus_slave));
+  ASSERT_WARN(0 != BusLineAuthGetRxCnt(&bus_master));
+  ASSERT_WARN(BusLineAuthGetTxCnt(&bus_slave) != BusLineAuthGetRxCnt(&bus_master));
 
   // CEM and PAK must pair with each other.
   pTx = BusLineCreatePairing(0, 0, randombytes, NULL);
-  BusLineAuthPairCEM(&cem, &pTx->u.pairing);
-  BusLineAuthPairPAKM(&pak, &pTx->u.pairing);
+  BusLineAuthPairCEM(&bus_master, &pTx->u.pairing);
+  BusLineAuthPairPAKM(&bus_slave, &pTx->u.pairing);
   BusLineFreeMessage(pTx);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
   pTx = BusLineCreateChallenge(0, 0, randombytes, NULL, 120);
-  BusLineReceiveAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
-  BusLineReceiveAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
+  BusLineReceiveAuthChallenge(&bus_master, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
+  BusLineReceiveAuthChallenge(&bus_slave, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
   BusLineFreeMessage(pTx);
 
   // Set txcnt to 0 as this should cause first authentication to fail.
-  BusLineAuthSetTxCnt(&pak, 0);
+  BusLineAuthSetTxCnt(&bus_slave, 0);
 
   // Allocate and send a message, which will FAIL as txcnt is zero on the sent message.
-  pTx = BusLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  ok = BusLineAuthenticateMessage(&cem, pTx, NULL);
+  pTx = BusLineCreateAuthenticatedMessage(&bus_slave, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  ok = BusLineAuthenticateMessage(&bus_master, pTx, NULL);
   ASSERT(!ok);
   BusLineFreeMessage(pTx);
 
   // CEM detects failure, and generates a challenge, then broadcasts it to PAK.
   // Currently only CEM generates the challenge.
   pTx = BusLineCreateChallenge(0, 0, randombytes, NULL, 120);
-  BusLineReceiveAuthChallenge(&cem, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
+  BusLineReceiveAuthChallenge(&bus_master, &pTx->u.challenge, &pTx->u.challenge, 120, nullptr);
   // PAK will generate a challenge response
   {
     BusLineMessage *pPakChallengeResponse = nullptr;
 
     // Receive challenge and generate response
-    BusLineReceiveAuthChallenge(&pak, &pTx->u.challenge, &pTx->u.challenge, 120, &pPakChallengeResponse);
+    BusLineReceiveAuthChallenge(&bus_slave, &pTx->u.challenge, &pTx->u.challenge, 120, &pPakChallengeResponse);
     ASSERT(pPakChallengeResponse);
 
     // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 from the auth message)
-    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&pak));
-    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&bus_slave));
+    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&bus_master));
 
     // Authenticate the challenge response
-    ok = BusLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
+    ok = BusLineAuthenticateMessage(&bus_master, pPakChallengeResponse, NULL);
     ASSERT(ok);
 
     // Free the response
@@ -415,15 +415,15 @@ static void wakeupTest1()
   BusLineFreeMessage(pTx);
 
   // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 for challenge response)
-  ASSERT_WARN(2 == BusLineAuthGetTxCnt(&pak));
+  ASSERT_WARN(2 == BusLineAuthGetTxCnt(&bus_slave));
 
-  // cem has received one authentication message, so
+  // bus_master has received one authentication message, so
   // it should have rxcount of 1.
-  ASSERT_WARN(1 == BusLineAuthGetRxCnt(&cem));
+  ASSERT_WARN(1 == BusLineAuthGetRxCnt(&bus_master));
 
   // Allocate and send a message, which will be OK as now there is a session
-  pTx = BusLineCreateAuthenticatedMessage(&pak, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
-  ok = BusLineAuthenticateMessage(&cem, pTx, NULL);
+  pTx = BusLineCreateAuthenticatedMessage(&bus_slave, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+  ok = BusLineAuthenticateMessage(&bus_master, pTx, NULL);
   ASSERT(ok);
   BusLineFreeMessage(pTx);
 
@@ -438,37 +438,37 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits)
   bool ok;
   BusLineMessage *pM;
 
-  BusLineAuth pak;
-  BusLineAuth cem;
+  BusLineAuth bus_slave;
+  BusLineAuth bus_master;
 
-  BusLineAuthInit(&pak);
-  BusLineAuthInit(&cem);
+  BusLineAuthInit(&bus_slave);
+  BusLineAuthInit(&bus_master);
 
   // CEM and PAK must pair with each other.
   pM = BusLineCreatePairing(0, 0, randombytes, NULL);
-  BusLineAuthPairCEM(&cem, &pM->u.pairing);
-  BusLineAuthPairPAKM(&pak, &pM->u.pairing);
+  BusLineAuthPairCEM(&bus_master, &pM->u.pairing);
+  BusLineAuthPairPAKM(&bus_slave, &pM->u.pairing);
   BusLineFreeMessage(pM);
 
   // Generate a challenge, apply the CEM and PAK.
   pM = BusLineCreateChallenge(0, 0, randombytes, NULL, challengeBits);
-  BusLineReceiveAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge, challengeBits, nullptr);
+  BusLineReceiveAuthChallenge(&bus_master, &pM->u.challenge, &pM->u.challenge, challengeBits, nullptr);
   // PAK will generate a challenge response
   {
     BusLineMessage *pPakChallengeResponse = nullptr;
 
     // Receive challenge and generate response
-    BusLineReceiveAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, challengeBits, &pPakChallengeResponse);
+    BusLineReceiveAuthChallenge(&bus_slave, &pM->u.challenge, &pM->u.challenge, challengeBits, &pPakChallengeResponse);
     ASSERT(pPakChallengeResponse);
 
     // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 from the auth message)
-    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&pak));
-    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&bus_slave));
+    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&bus_master));
 
     // Authenticate the challenge response
-    ok = BusLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
+    ok = BusLineAuthenticateMessage(&bus_master, pPakChallengeResponse, NULL);
     ASSERT(ok);
-    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&bus_master));
 
     // Free the response
     BusLineFreeMessage(pPakChallengeResponse);
@@ -480,10 +480,10 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits)
   {
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
 
-    pM = BusLineCreateAuthenticatedMessage(&cem, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
+    pM = BusLineCreateAuthenticatedMessage(&bus_master, 0x12, 0x05, 0x02, signedMsg, sizeof(signedMsg));
 
     pSigned = NULL;
-    ok = BusLineAuthenticateMessage(&pak, pM, &pSigned);
+    ok = BusLineAuthenticateMessage(&bus_slave, pM, &pSigned);
     ASSERT(ok);
 
     ASSERT(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
@@ -494,24 +494,24 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits)
 
   // Generate new challenge to reset txcnt to 1.
   pM = BusLineCreateChallenge(0, 0, randombytes, NULL, challengeBits);
-  BusLineReceiveAuthChallenge(&cem, &pM->u.challenge, &pM->u.challenge, challengeBits, nullptr);
+  BusLineReceiveAuthChallenge(&bus_master, &pM->u.challenge, &pM->u.challenge, challengeBits, nullptr);
   // PAK will generate a challenge response
   {
     BusLineMessage *pPakChallengeResponse = nullptr;
 
     // Receive challenge and generate response
-    BusLineReceiveAuthChallenge(&pak, &pM->u.challenge, &pM->u.challenge, challengeBits, &pPakChallengeResponse);
+    BusLineReceiveAuthChallenge(&bus_slave, &pM->u.challenge, &pM->u.challenge, challengeBits, &pPakChallengeResponse);
     ASSERT(pPakChallengeResponse);
 
     // RX Counter (last message received) set to 1, TXCNT set to 1 (+1 from the auth message)
-    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&pak));
-    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(2 == BusLineAuthGetTxCnt(&bus_slave));
+    ASSERT_WARN(0 == BusLineAuthGetRxCnt(&bus_master));
 
     // Authenticate the challenge response
-    ok = BusLineAuthenticateMessage(&cem, pPakChallengeResponse, NULL);
+    ok = BusLineAuthenticateMessage(&bus_master, pPakChallengeResponse, NULL);
     ASSERT(ok);
 
-    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&cem));
+    ASSERT_WARN(1 == BusLineAuthGetRxCnt(&bus_master));
 
     // Free the response
     BusLineFreeMessage(pPakChallengeResponse);
@@ -525,11 +525,11 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits)
     const char signedMsg[] = "signedsignedsignedsignedsignedsignedsignedsignedsigned";
 
     pM = BusLineCreateAuthenticatedMessage(
-        &cem, 0x12, 0x05, 0x02,
+        &bus_master, 0x12, 0x05, 0x02,
         signedMsg, sizeof(signedMsg));
 
     pSigned = NULL;
-    ok = BusLineAuthenticateMessage(&pak, pM, &pSigned);
+    ok = BusLineAuthenticateMessage(&bus_slave, pM, &pSigned);
     ASSERT(ok);
 
     ASSERT(pSigned->hdr.sdata_len == 1 + sizeof(signedMsg));
@@ -538,8 +538,8 @@ static void authTestWithVariableChallengeBits(const size_t challengeBits)
     BusLineFreeMessage(pM);
   }
 
-  BusLineAuthDestruct(&pak);
-  BusLineAuthDestruct(&cem);
+  BusLineAuthDestruct(&bus_slave);
+  BusLineAuthDestruct(&bus_master);
 
   cout << "ok." << endl;
 }
